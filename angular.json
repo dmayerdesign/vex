@@ -3,14 +3,14 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "vex": {
+    "demo": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
           "style": "scss"
         }
       },
-      "root": "",
+      "root": "projects/demo",
       "sourceRoot": "src",
       "prefix": "app",
       "architect": {
@@ -116,6 +116,41 @@
             "production": {
               "devServerTarget": "vex:serve:production"
             }
+          }
+        }
+      }
+    },
+    "vex": {
+      "projectType": "library",
+      "root": "projects/vex",
+      "sourceRoot": "projects/vex/src",
+      "prefix": "lib",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-ng-packagr:build",
+          "options": {
+            "tsConfig": "projects/vex/tsconfig.lib.json",
+            "project": "projects/vex/ng-package.json"
+          }
+        },
+        "test": {
+          "builder": "@angular-devkit/build-angular:karma",
+          "options": {
+            "main": "projects/vex/src/test.ts",
+            "tsConfig": "projects/vex/tsconfig.spec.json",
+            "karmaConfig": "projects/vex/karma.conf.js"
+          }
+        },
+        "lint": {
+          "builder": "@angular-devkit/build-angular:tslint",
+          "options": {
+            "tsConfig": [
+              "projects/vex/tsconfig.lib.json",
+              "projects/vex/tsconfig.spec.json"
+            ],
+            "exclude": [
+              "**/node_modules/**"
+            ]
           }
         }
       }
