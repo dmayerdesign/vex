@@ -1,23 +1,23 @@
-export interface AppState {
+export interface TestAppState {
   cart: {
-    products: Product[]
+    products: TestProduct[]
     total: number
   }
 }
 
-export interface Product {
+export interface TestProduct {
   name: string
   price: number
 }
 
-export const initialAppState: AppState = {
+export const initialAppState: TestAppState = {
   cart: {
     products: [],
     total: 0
   }
 }
 
-export enum AppAction {
+export enum TestAppAction {
   CART_ADD_PRODUCT = 'CART_ADD_PRODUCT',
   CART_UPDATE_TOTAL = 'CART_UPDATE_TOTAL',
 }
