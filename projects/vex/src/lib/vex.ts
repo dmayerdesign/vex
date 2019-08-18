@@ -23,7 +23,6 @@ export class Vex<StateType> {
   public dispatch$: Observable<Action<StateType>>
   public dispatchAudit$: Observable<Action<StateType>>
   public state$: Observable<StateType>
-  public stateAudit$: Observable<StateType>
 
   constructor(
     private _initialState: StateType,
@@ -49,7 +48,9 @@ export class Vex<StateType> {
             typeof (unresolvedNewStatePartial as Promise<Partial<StateType>>).then === 'function'
             || typeof (unresolvedNewStatePartial as Observable<Partial<StateType>>).subscribe === 'function'
           ) {
-            const asyncNewStatePartial = unresolvedNewStatePartial as Promise<Partial<StateType>> | Observable<Partial<StateType>>
+            const asyncNewStatePartial = unresolvedNewStatePartial as (
+              Promise<Partial<StateType>> | Observable<Partial<StateType>>
+            )
             return from(asyncNewStatePartial).pipe(
               first(),
               map((partial) => ({
@@ -70,6 +71,7 @@ export class Vex<StateType> {
           })
         },
         { state: this._initialState },
+        1
       ),
       startWith({ state: this._initialState }),
       shareReplay(1),
@@ -78,13 +80,9 @@ export class Vex<StateType> {
       map(({ state }) => state),
       shareReplay(1),
     )
-    this.stateAudit$ = this._actionAuditß.pipe(
-      withLatestFrom(this.state$, (_action, state) => state),
-    )
     this.dispatch$ = this._actionß.asObservable()
     this.dispatchAudit$ = this._actionAuditß.asObservable()
     this.state$.subscribe()
-    this.stateAudit$.subscribe()
     this.dispatch$.subscribe()
     this.dispatchAudit$.subscribe()
   }
@@ -100,7 +98,7 @@ export class Vex<StateType> {
       filter((action) => actionTypes.some(
         (actionType) => action.type === actionType
       )),
-      withLatestFrom(this.stateAudit$),
+      withLatestFrom(this.state$),
       map(([ action, state ]) => ({ actionType: action.type, state })),
       share(),
     )
