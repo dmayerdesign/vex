@@ -1,13 +1,13 @@
 {
   "name": "@dannymayer/vex",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "repository": {
     "url": "https://github.com/dmayerdesign/vex"
   },
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "build": "ng build",
+    "build": "ng build; cp README.md dist/vex/README.md",
     "test": "ng test",
     "lint": "ng lint"
   },
