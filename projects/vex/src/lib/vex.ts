@@ -1,27 +1,34 @@
 import { from, of, Observable, Subject } from 'rxjs'
 import { catchError, filter, first, map, mergeScan, share, shareReplay, startWith, tap, withLatestFrom } from 'rxjs/operators'
 
-export interface Action<StateType> {
+export interface SyncAction<StateType> {
   type: string
-  resolve: (state: StateType) => (
-    Promise<Partial<StateType>>
-    | Observable<Partial<StateType>>
-    | Partial<StateType>
-  )
+  resolve: (state: StateType) => Partial<StateType>
 }
 
-export interface ActionResult<StateType> {
+export interface AsyncAction<StateType, ResultType> {
+  type: string
+  resolve: (state: StateType) => (
+    Promise<ResultType> | Observable<ResultType>
+  )
+  mapToState: (state: StateType, result?: ResultType) => Partial<StateType>
+}
+
+export type Action<StateType, ResultType = never> = SyncAction<StateType> | AsyncAction<StateType, ResultType>
+
+export interface ActionResult<StateType, ResultType = never> {
   state: StateType
+  result?: ResultType
   actionType?: string
   error?: Error
 }
 
 export class Vex<StateType> {
-  private _actionß = new Subject<Action<StateType>>()
-  private _actionAuditß = new Subject<Action<StateType>>()
-  private _resolution$: Observable<ActionResult<StateType>>
-  public dispatch$: Observable<Action<StateType>>
-  public dispatchAudit$: Observable<Action<StateType>>
+  private _actionß = new Subject<Action<StateType, any>>()
+  private _actionAuditß = new Subject<Action<StateType, any>>()
+  private _resolution$: Observable<ActionResult<StateType, any>>
+  public dispatch$: Observable<Action<StateType, any>>
+  public dispatchAudit$: Observable<Action<StateType, any>>
   public state$: Observable<StateType>
 
   constructor(
@@ -31,11 +38,11 @@ export class Vex<StateType> {
       tap((action) => this._actionAuditß.next(action)),
       mergeScan(
         ({ state }, action) => {
-          let unresolvedNewStatePartial: Partial<StateType> | Promise<Partial<StateType>> | Observable<Partial<StateType>>
+          let unresolvedResult: Partial<StateType> | Promise<any> | Observable<any>
 
           // Handle synchronous error.
           try {
-            unresolvedNewStatePartial = action.resolve(state)
+            unresolvedResult = action.resolve(state)
           } catch (error) {
             return of({
               actionType: action.type,
@@ -45,17 +52,18 @@ export class Vex<StateType> {
 
           // Handle asynchronous success or error.
           if (
-            typeof (unresolvedNewStatePartial as Promise<Partial<StateType>>).then === 'function'
-            || typeof (unresolvedNewStatePartial as Observable<Partial<StateType>>).subscribe === 'function'
+            typeof (unresolvedResult as Promise<any>).then === 'function'
+            || typeof (unresolvedResult as Observable<any>).subscribe === 'function'
           ) {
-            const asyncNewStatePartial = unresolvedNewStatePartial as (
-              Promise<Partial<StateType>> | Observable<Partial<StateType>>
-            )
-            return from(asyncNewStatePartial).pipe(
+            return from(unresolvedResult as Promise<any> | Observable<any>).pipe(
               first(),
-              map((partial) => ({
+              withLatestFrom(this.state$),
+              map(([result, currentState]) => ({
                 actionType: action.type,
-                state: Object.assign(state, partial)
+                state: Object.assign(
+                  currentState,
+                  (action as AsyncAction<StateType, any>).mapToState(currentState, result)
+                )
               })),
               catchError((error) => of({
                 actionType: action.type,
@@ -67,11 +75,10 @@ export class Vex<StateType> {
           // Handle synchronous success.
           return of({
             actionType: action.type,
-            state: Object.assign(state, unresolvedNewStatePartial)
+            state: Object.assign(state, unresolvedResult)
           })
         },
-        { state: this._initialState },
-        1
+        { state: this._initialState }
       ),
       startWith({ state: this._initialState }),
       shareReplay(1),
@@ -87,7 +94,9 @@ export class Vex<StateType> {
     this.dispatchAudit$.subscribe()
   }
 
-  public dispatch(action: Action<StateType>): void {
+  public dispatch<ActionType extends Action<StateType, any> = Action<StateType, any>>(
+    action: ActionType
+  ): void {
     return this._actionß.next(action)
   }
 
@@ -106,7 +115,7 @@ export class Vex<StateType> {
 
   public resultOf(
     ...actionTypes: string[]
-  ): Observable<ActionResult<StateType>> {
+  ): Observable<ActionResult<StateType, any>> {
     return this._resolution$.pipe(
       filter((result) => actionTypes.some(
         (actionType) => result.actionType === actionType

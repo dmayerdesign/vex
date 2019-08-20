@@ -144,39 +144,42 @@ describe('Vex', () => {
       })
   })
 
-  it('(Sync) should update the state and react to a result', (done) => {
+  it('(Sync) should update the state and react to a result', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
+    let numProducts: number
     vex.resultOf(TestAppAction.CART_ADD_PRODUCT)
       .pipe(
         map(({ state }) => state),
         first(),
       )
       .subscribe((state) => {
-        expect(state.cart.products.length).toBe(1)
-        done()
+        numProducts = state.cart.products.length
       })
     api.testDispatchSync()
+    expect(numProducts).toBe(1)
   })
 
-  it('(Sync) should signal intent and react to intent', (done) => {
+  it('(Sync) should signal intent and react to intent', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
-
+    let numProducts: number
+    let cartTotal: number
     vex.dispatchOf(TestAppAction.CART_UPDATE_TOTAL)
       .pipe(
         map(({ state }) => state),
         first(),
       )
       .subscribe((state) => {
-        expect(state.cart.products.length).toBe(1)
-        expect(state.cart.total).toBe(0)
-        done()
+        numProducts = state.cart.products.length
+        cartTotal = state.cart.total
       })
     api.testDispatchSync()
+    expect(numProducts).toBe(1)
+    expect(cartTotal).toBe(0)
   })
 
-  it('(Sync) should handle an error', (done) => {
+  it('(Sync) should handle an error', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchSyncThrow()
@@ -188,7 +191,28 @@ describe('Vex', () => {
       .subscribe((error) => {
         expect(error).toBeTruthy()
         expect(error.message).toBe('Test error')
-        done()
       })
+  })
+
+  it('(Observable) should correctly mutate state during concurrent async actions', (done) => {
+    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const api: TestAppApi = TestBed.get(TestAppApi)
+    const getRandomDelayMs = () => Math.random() * 1000
+
+    api.testDispatchObservable(getRandomDelayMs())
+    api.testDispatchObservable(getRandomDelayMs())
+    api.testDispatchObservable(getRandomDelayMs())
+    api.testDispatchObservable(getRandomDelayMs())
+    api.testDispatchObservable(getRandomDelayMs())
+
+    let resolvedCount = 0
+    vex.resultOf(TestAppAction.CART_ADD_PRODUCT).subscribe(({ state }) => {
+      resolvedCount++
+      expect(resolvedCount).toBeLessThanOrEqual(5)
+      if (resolvedCount === 5) {
+        expect(state.cart.products.length).toBe(5)
+        done()
+      }
+    })
   })
 })

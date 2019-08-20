@@ -1,8 +1,10 @@
 {
   "name": "vex",
-  "version": "0.0.1",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/dmayerdesign/vex"
+  },
   "peerDependencies": {
-    "@angular/common": "^8.1.3",
-    "@angular/core": "^8.1.3"
+    "rxjs": "~6.4.0"
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core'
 import { of, throwError, Observable } from 'rxjs'
-import { delay, map, switchMapTo } from 'rxjs/operators'
+import { delay, switchMapTo } from 'rxjs/operators'
 import { Vex } from '../../lib/vex'
 import { TestAppAction, TestAppState, TestProduct } from './test-app.model'
 
@@ -34,26 +34,20 @@ export class TestAppApi {
     )
   }
 
-  public testDispatchObservable(): void {
+  public testDispatchObservable(delayMs = 100): void {
     this._manager.dispatch({
       type: TestAppAction.CART_ADD_PRODUCT,
       // Async resolution using Observable.
-      resolve: (state) => of({
-        name: 'Product',
-        price: 10,
+      resolve: () => of({ name: 'Product', price: 10 }).pipe(delay(delayMs)),
+      mapToState: (state: TestAppState, product: TestProduct) => ({
+        cart: {
+          ...state.cart,
+          products: [
+            ...state.cart.products,
+            product
+          ]
+        }
       })
-        .pipe(
-          delay(100),
-          map((product: TestProduct) => ({
-            cart: {
-              ...state.cart,
-              products: [
-                ...state.cart.products,
-                product
-              ]
-            }
-          }))
-        )
     })
   }
 
@@ -68,7 +62,8 @@ export class TestAppApi {
         .pipe(
           delay(100),
           switchMapTo(throwError(new Error('Test error')))
-        )
+        ),
+      mapToState: (state: TestAppState) => state
     })
   }
 
@@ -76,15 +71,16 @@ export class TestAppApi {
     this._manager.dispatch({
       type: TestAppAction.CART_ADD_PRODUCT,
       // Async resolution using Promise.
-      resolve: (state) => Promise.resolve({
+      resolve: () => Promise.resolve({
+        name: 'Product',
+        price: 10,
+      }),
+      mapToState: (state, product: TestProduct) => ({
         cart: {
           ...state.cart,
           products: [
             ...state.cart.products,
-            {
-              name: 'Product',
-              price: 10,
-            }
+            product
           ]
         }
       })
@@ -95,7 +91,8 @@ export class TestAppApi {
     this._manager.dispatch({
       type: TestAppAction.CART_ADD_PRODUCT,
       // Async resolution using Promise.
-      resolve: () => Promise.reject(new Error('Test error'))
+      resolve: () => Promise.reject(new Error('Test error')),
+      mapToState: (state) => state
     })
   }
 

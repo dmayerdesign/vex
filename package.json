@@ -1,6 +1,9 @@
 {
-  "name": "vex",
-  "version": "0.0.0",
+  "name": "@dannymayer/vex",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/dmayerdesign/vex"
+  },
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
