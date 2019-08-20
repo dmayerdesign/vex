@@ -37,7 +37,7 @@ export class Vex<StateType> {
     this._resolution$ = this._actionß.pipe(
       tap((action) => this._actionAuditß.next(action)),
       mergeScan(
-        ({ state }, action) => {
+        ({ state = this._initialState }, action) => {
           let unresolvedResult: Partial<StateType> | Promise<any> | Observable<any>
 
           // Handle synchronous error.
@@ -46,7 +46,7 @@ export class Vex<StateType> {
           } catch (error) {
             return of({
               actionType: action.type,
-              error
+              error,
             })
           }
 
@@ -58,17 +58,20 @@ export class Vex<StateType> {
             return from(unresolvedResult as Promise<any> | Observable<any>).pipe(
               first(),
               withLatestFrom(this.state$),
-              map(([result, currentState]) => ({
+              map(([result, currentState = this._initialState]) => ({
                 actionType: action.type,
                 state: Object.assign(
                   currentState,
-                  (action as AsyncAction<StateType, any>).mapToState(currentState, result)
-                )
+                  (action as AsyncAction<StateType, any>).mapToState(
+                    currentState,
+                    result,
+                  ),
+                ),
               })),
               catchError((error) => of({
                 actionType: action.type,
-                error
-              }))
+                error,
+              })),
             )
           }
 
