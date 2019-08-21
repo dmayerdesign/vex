@@ -32,7 +32,7 @@ export class TestComponent implements OnInit {
 
   public ngOnInit(): void {
     // Side effects!
-    this._manager.resultOf(AppAction.CART_ADD_PRODUCT).subscribe(
+    this._manager.results(AppAction.CART_ADD_PRODUCT).subscribe(
       () => this._manager.dispatch({
         type: AppAction.CART_UPDATE_TOTAL,
         resolve: (state) => ({

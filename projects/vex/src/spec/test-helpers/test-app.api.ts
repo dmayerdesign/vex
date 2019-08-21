@@ -14,7 +14,7 @@ export class TestAppApi {
   ) {
     // Side effect.
     // Test synchronous resolution.
-    this._manager.resultOf(TestAppAction.CART_ADD_PRODUCT).subscribe(
+    this._manager.results(TestAppAction.CART_ADD_PRODUCT).subscribe(
       ({ error }) => {
         if (!error) {
           this._manager.dispatch({

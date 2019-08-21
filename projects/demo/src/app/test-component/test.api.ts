@@ -14,23 +14,26 @@ export class AppApi {
     private _httpClient: HttpClient
   ) { }
 
-  public addProduct(): void {
+  public async addProduct(): Promise<AppState> {
     const whichPost = Math.ceil(Math.random() * 10)
-    this._manager.dispatch({
-      type: AppAction.CART_ADD_PRODUCT,
-      resolve: () => this._httpClient.get(`https://jsonplaceholder.typicode.com/posts/${whichPost}`),
-      mapToState: (state, post: any) => ({
-        cart: {
-          ...state.cart,
-          products: [
-            ...state.cart.products,
-            {
-              name: post.title,
-              price: post.id
-            }
-          ]
-        }
+    return this._manager
+      .once({
+        type: AppAction.CART_ADD_PRODUCT,
+        resolve: () => this._httpClient.get(`https://jsonplaceholder.typicode.com/posts/${whichPost}`),
+        mapToState: (state, post: any) => ({
+          cart: {
+            ...state.cart,
+            products: [
+              ...state.cart.products,
+              {
+                name: post.title,
+                price: post.id,
+              }
+            ]
+          }
+        })
       })
-    })
+      .toPromise()
+      .then(({ state }) => state)
   }
 }

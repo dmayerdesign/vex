@@ -15,7 +15,7 @@ import { initialAppState } from './test-component/test.model'
   imports: [
     BrowserModule,
     HttpClientModule,
-    VexModule.forRoot(initialAppState),
+    VexModule.forRoot(initialAppState, { allowConcurrency: true }),
   ],
   providers: [
     AppApi,

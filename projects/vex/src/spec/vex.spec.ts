@@ -41,7 +41,7 @@ describe('Vex', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchObservable()
-    vex.dispatchOf(TestAppAction.CART_UPDATE_TOTAL)
+    vex.dispatches(TestAppAction.CART_UPDATE_TOTAL)
       .pipe(first())
       .subscribe(({ actionType, state }) => {
         expect(actionType).toBeTruthy()
@@ -54,7 +54,7 @@ describe('Vex', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchObservable()
-    vex.resultOf(TestAppAction.CART_ADD_PRODUCT)
+    vex.results(TestAppAction.CART_ADD_PRODUCT)
       .pipe(
         map(({ state }) => state),
         first(),
@@ -69,7 +69,7 @@ describe('Vex', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchObservable()
-    vex.dispatchOf(TestAppAction.CART_UPDATE_TOTAL)
+    vex.dispatches(TestAppAction.CART_UPDATE_TOTAL)
       .pipe(
         map(({ state }) => state),
         first(),
@@ -85,7 +85,7 @@ describe('Vex', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchObservableThrow()
-    vex.resultOf(TestAppAction.CART_ADD_PRODUCT)
+    vex.results(TestAppAction.CART_ADD_PRODUCT)
       .pipe(
         map(({ error }) => error),
         first(),
@@ -101,7 +101,7 @@ describe('Vex', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchPromise()
-    vex.resultOf(TestAppAction.CART_ADD_PRODUCT)
+    vex.results(TestAppAction.CART_ADD_PRODUCT)
       .pipe(
         map(({ state }) => state),
         first(),
@@ -116,7 +116,7 @@ describe('Vex', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchPromise()
-    vex.dispatchOf(TestAppAction.CART_UPDATE_TOTAL)
+    vex.dispatches(TestAppAction.CART_UPDATE_TOTAL)
       .pipe(
         map(({ state }) => state),
         first(),
@@ -132,7 +132,7 @@ describe('Vex', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchPromiseThrow()
-    vex.resultOf(TestAppAction.CART_ADD_PRODUCT)
+    vex.results(TestAppAction.CART_ADD_PRODUCT)
       .pipe(
         map(({ error }) => error),
         first(),
@@ -148,7 +148,7 @@ describe('Vex', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
     let numProducts: number
-    vex.resultOf(TestAppAction.CART_ADD_PRODUCT)
+    vex.results(TestAppAction.CART_ADD_PRODUCT)
       .pipe(
         map(({ state }) => state),
         first(),
@@ -165,7 +165,7 @@ describe('Vex', () => {
     const api: TestAppApi = TestBed.get(TestAppApi)
     let numProducts: number
     let cartTotal: number
-    vex.dispatchOf(TestAppAction.CART_UPDATE_TOTAL)
+    vex.dispatches(TestAppAction.CART_UPDATE_TOTAL)
       .pipe(
         map(({ state }) => state),
         first(),
@@ -183,7 +183,7 @@ describe('Vex', () => {
     const vex: Vex<TestAppState> = TestBed.get(Vex)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchSyncThrow()
-    vex.resultOf(TestAppAction.CART_ADD_PRODUCT)
+    vex.results(TestAppAction.CART_ADD_PRODUCT)
       .pipe(
         map(({ error }) => error),
         first(),
@@ -206,7 +206,7 @@ describe('Vex', () => {
     api.testDispatchObservable(getRandomDelayMs())
 
     let resolvedCount = 0
-    vex.resultOf(TestAppAction.CART_ADD_PRODUCT).subscribe(({ state }) => {
+    vex.results(TestAppAction.CART_ADD_PRODUCT).subscribe(({ state }) => {
       resolvedCount++
       expect(resolvedCount).toBeLessThanOrEqual(5)
       if (resolvedCount === 5) {
