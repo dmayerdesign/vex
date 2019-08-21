@@ -28,7 +28,7 @@ Vex is a simple, lightweight, asynchronous state manager for JavaScript and Type
   Dispatches an Action.
 
 > **once( *action:* Action ): Observable\<ActionResult\<StateType>>** <br>
-  Dispatches an Action Meant for use with asynchronous Actions.
+  Dispatches an asynchronous Action and returns an Observable of the result.
 
 > **dispatches( *actionType*: string ): Observable\<ActionResult\<StateType>>** <br>
   Returns an Observable that emits each time an action of the given `actionType` is
