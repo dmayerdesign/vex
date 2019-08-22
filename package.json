@@ -8,9 +8,8 @@
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build; cp README.md dist/vex/README.md",
-    "publish": "cd dist/vex; npm publish --access public",
-    "test": "ng test",
-    "lint": "ng lint"
+    "publish": "ng build vex; ng test vex --watch=false && cd dist/vex && npm publish --access public",
+    "test": "ng test"
   },
   "private": true,
   "dependencies": {

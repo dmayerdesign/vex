@@ -1,8 +1,11 @@
 import { from, of, Observable, Subject } from 'rxjs'
 import { catchError, concatMap, filter, first, map, mergeScan, scan, share, shareReplay, startWith, tap, withLatestFrom } from 'rxjs/operators'
+import { DevtoolsOptions, NgZoneLike } from './akita-devtools'
+import { configureDevtoolsForInstance } from './devtools'
 
 export interface VexOptions {
-  allowConcurrency?: boolean
+  allowConcurrency?: boolean,
+  devtoolsOptions?: DevtoolsOptions
 }
 
 export interface SyncAction<StateType> {
@@ -20,10 +23,13 @@ export interface AsyncAction<StateType, ResultType> {
 
 export type Action<StateType, ResultType = never> = SyncAction<StateType> | AsyncAction<StateType, ResultType>
 
+export type AuditableAction<StateType, ResultType = never> = Action<StateType, ResultType> & { featureKey: string }
+
 export interface ActionResult<StateType> {
   state: StateType
   actionType: string
   error?: Error
+  featureKey?: string
 }
 
 export interface UniqueAction<StateType, ResultType = any> extends AsyncAction<StateType, ResultType> {
@@ -36,14 +42,16 @@ export interface UniqueActionResult<StateType> extends ActionResult<StateType> {
 
 export class Vex<StateType> {
   private _actionß = new Subject<Action<StateType, any>>()
-  private _actionAuditß = new Subject<Action<StateType, any>>()
+  private _actionAuditß = new Subject<AuditableAction<StateType, any>>()
   private _resolution$: Observable<ActionResult<StateType>>
   private _dispatchAudit$: Observable<Action<StateType, any>>
   public state$: Observable<StateType>
 
   constructor(
     private _initialState: StateType,
-    { allowConcurrency = true }: VexOptions
+    { allowConcurrency, devtoolsOptions }: VexOptions = { allowConcurrency: true },
+    ngZone?: NgZoneLike,
+    featureKey?: string,
   ) {
     const initialResult: ActionResult<StateType> = {
       state: this._initialState,
@@ -52,7 +60,7 @@ export class Vex<StateType> {
 
     if (!allowConcurrency) {
       this._resolution$ = this._actionß.pipe(
-        tap((action) => this._actionAuditß.next(action)),
+        tap((action) => this._actionAuditß.next({ ...action, featureKey })),
         withLatestFrom(this.state$ || of(this._initialState)),
         concatMap(([action, state]) => this._resolve(state, action)),
         scan(
@@ -65,7 +73,7 @@ export class Vex<StateType> {
     }
     else {
       this._resolution$ = this._actionß.pipe(
-        tap((action) => this._actionAuditß.next(action)),
+        tap((action) => this._actionAuditß.next({ ...action, featureKey })),
         mergeScan<Action<StateType, any>, ActionResult<StateType>>(
           ({ state } = initialResult, action) => this._resolve(state, action),
           initialResult,
@@ -81,6 +89,14 @@ export class Vex<StateType> {
     this._dispatchAudit$ = this._actionAuditß.asObservable()
     this._dispatchAudit$.subscribe()
     this.state$.subscribe()
+
+    configureDevtoolsForInstance(
+      featureKey,
+      this._dispatchAudit$,
+      this._resolution$,
+      { allowConcurrency, devtoolsOptions },
+      ngZone
+    )
   }
 
   public dispatch<ActionType extends Action<StateType, any> = Action<StateType, any>>(
@@ -178,6 +194,19 @@ export class Vex<StateType> {
   }
 }
 
-export function createVex(initialState: any, options: VexOptions): Vex<any> {
-  return new Vex(initialState, options)
+export function createVex(
+  initialState: any,
+  options: VexOptions,
+  ngZone?: NgZoneLike
+): Vex<any> {
+  return new Vex(initialState, options, ngZone)
+}
+
+export function createVexForFeature(
+  featureKey: string,
+  initialState: any,
+  options: VexOptions,
+  ngZone?: NgZoneLike
+): Vex<any> {
+  return new Vex(initialState, options, ngZone, featureKey)
 }
