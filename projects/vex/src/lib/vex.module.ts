@@ -1,5 +1,5 @@
-import { InjectionToken, ModuleWithProviders, NgModule, NgZone } from '@angular/core'
-import { createVex, createVexForFeature, Vex, VexOptions } from './vex'
+import { InjectionToken, ModuleWithProviders, NgModule } from '@angular/core'
+import { createVexForFeature, createVexForRoot, Vex, VexOptions } from './vex'
 
 export const INITIAL_STATE = new InjectionToken<any>('INITIAL_STATE')
 export const OPTIONS = new InjectionToken<VexOptions>('OPTIONS')
@@ -24,8 +24,8 @@ export class VexModule {
         },
         {
           provide: Vex,
-          useFactory: createVex,
-          deps: [ INITIAL_STATE, OPTIONS, NgZone ]
+          useFactory: createVexForRoot,
+          deps: [ INITIAL_STATE, OPTIONS ]
         }
       ]
     }
@@ -54,7 +54,7 @@ export class VexModule {
         {
           provide: Vex,
           useFactory: createVexForFeature,
-          deps: [ INITIAL_STATE, OPTIONS, NgZone, featureKey ],
+          deps: [ INITIAL_STATE, OPTIONS, featureKey ],
         },
       ],
     }

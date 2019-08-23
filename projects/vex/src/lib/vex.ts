@@ -1,8 +1,15 @@
 import { empty, from, merge, of, Observable, Subject } from 'rxjs'
 import { catchError, concatMap, filter, first, map, mergeScan, scan, share, shareReplay, startWith, switchMap, tap, withLatestFrom } from 'rxjs/operators'
-import { DevtoolsOptions } from './akita-devtools'
 
-let globalSyncOnlyVex: Vex<any>
+const DEFAULT_MAX_AGE = 25
+const DEFAULT_DEVTOOLS_OPTIONS: Partial<DevtoolsOptions> = {
+  name: 'Vex',
+  maxAge: DEFAULT_MAX_AGE,
+}
+const APP_ROOT = 'APP_ROOT'
+
+let globalVex: Vex<any>
+const featureKeyVexMap = new Map<string, Vex<any>>()
 
 export interface VexOptions {
   allowConcurrency?: boolean,
@@ -41,23 +48,48 @@ export interface UniqueActionResult<StateType> extends ActionResult<StateType> {
   _actionId?: Symbol
 }
 
-export class Vex<StateType> {
-  private _actionß = new Subject<Action<StateType, any>>()
-  private _actionAuditß = new Subject<AuditableAction<StateType, any>>()
-  private _resolution$: Observable<ActionResult<StateType>>
-  private _dispatchAudit$: Observable<Action<StateType, any>>
+export interface VexInterface<StateType> {
+  history$: Observable<StateType[]>
+  state$: Observable<StateType>
+
+  dispatch<ActionType extends Action<StateType, any> = Action<StateType, any>>(
+    action: ActionType
+  ): void
+
+  once<ActionType extends AsyncAction<StateType, any>>(
+    action: ActionType
+  ): Observable<ActionResult<StateType>>
+
+  dispatches(actionType: string): Observable<ActionResult<StateType>>
+
+  results(actionType: string): Observable<ActionResult<StateType>>
+}
+
+export class Vex<StateType> implements Vex<StateType> {
+  private readonly _actionß = new Subject<Action<StateType, any>>()
+  private readonly _actionAuditß = new Subject<AuditableAction<StateType, any>>()
+  private readonly _resolution$: Observable<ActionResult<StateType>>
+  private readonly _dispatchAudit$: Observable<Action<StateType, any>>
+  private readonly _maxAge: number = DEFAULT_MAX_AGE
+  public history$: Observable<StateType[]>
   public state$: Observable<StateType>
 
   constructor(
     private _initialState: StateType,
-    { allowConcurrency }: VexOptions = { allowConcurrency: true },
+    { allowConcurrency, devtoolsOptions }: VexOptions = { allowConcurrency: true },
     featureKey?: string,
   ) {
+    console.log('initializing Vex for', featureKey)
     const initialResult: ActionResult<StateType> = {
       state: this._initialState,
       actionType: 'INITIALIZE_STATE'
     }
 
+    if (devtoolsOptions) {
+      if (devtoolsOptions.maxAge) {
+        this._maxAge = devtoolsOptions.maxAge
+      }
+    }
     if (!allowConcurrency) {
       this._resolution$ = this._actionß.pipe(
         tap((action) => this._actionAuditß.next(Object.assign({ ...action, featureKey }))),
@@ -84,6 +116,16 @@ export class Vex<StateType> {
     }
     this.state$ = this._resolution$.pipe(
       map(({ state }) => state),
+      shareReplay(1),
+    )
+    this.history$ = this.state$.pipe(
+      scan((history: StateType[], state: StateType) => {
+        if (history.length === this._maxAge) {
+          history.shift()
+        }
+        history.push(state)
+        return history
+      }, [] as StateType[]),
       shareReplay(1),
     )
     this._dispatchAudit$ = this._actionAuditß.asObservable()
@@ -114,7 +156,7 @@ export class Vex<StateType> {
     this.dispatch(uniqueAction)
     return this.results(action.type).pipe(
       filter<UniqueActionResult<StateType>>(({ _actionId }) => _actionId === actionId),
-      first()
+      first(),
     )
   }
 
@@ -192,14 +234,16 @@ export class Vex<StateType> {
   }
 }
 
-globalSyncOnlyVex = new Vex({}, { allowConcurrency: false })
+class GlobalVex extends Vex<any> { }
+globalVex = new GlobalVex({})
 
-export function createVex(
+export function createVexForRoot(
   initialState: any,
   options: VexOptions,
 ): Vex<any> {
   setUpDevtools(options.devtoolsOptions)
   const vex = new Vex(initialState, options)
+  featureKeyVexMap.set(APP_ROOT, vex)
   return vex
 }
 
@@ -208,14 +252,30 @@ export function createVexForFeature(
   initialState: any,
   options: VexOptions,
 ): Vex<any> {
-  return new Vex(initialState, options, featureKey)
+  console.log('create vex for feature')
+  const vex = new Vex(initialState, options, featureKey)
+  featureKeyVexMap.set(featureKey, vex)
+  return vex
 }
 
+/**
+ * Adapted from https://github.com/datorama/akita/blob/master/akita/src/devtools.ts.
+*/
+export interface DevtoolsOptions {
+  /** instance name visible in devtools */
+  name: string
+  /**  maximum allowed actions to be stored in the history tree */
+  maxAge?: number
+  // latency: number
+  // actionsBlacklist: string[]
+  // actionsWhitelist: string[]
+  // shouldCatchErrors: boolean
+  logTrace?: boolean
+  // predicate: (state: any, action: any) => boolean
+  // shallow: boolean
+}
 
-
-
-
-
+export interface NgZoneLike { run: any }
 
 /** Singleton. */
 let devTools: any
@@ -247,36 +307,34 @@ export function setUpDevtools(
     throw new Error('Attempted to call `setUpDevtools` more than once.')
   }
 
-  const defaultOptions: Partial<DevtoolsOptions> & { name: string } = { name: 'Vex', shallow: true }
-  const mergedOptions = Object.assign({}, defaultOptions, devtoolsOptions)
+  const mergedOptions = Object.assign({}, DEFAULT_DEVTOOLS_OPTIONS, devtoolsOptions)
   devTools = (window as any).__REDUX_DEVTOOLS_EXTENSION__.connect(mergedOptions)
 
   const devtoolsDispatch$ = $$dispatch$.pipe(
     switchMap(({ type }) => {
-      return globalSyncOnlyVex.once({
+      return globalVex.once({
         type: '[DISPATCHED] ' + type,
-        resolve: async () => undefined,
+        resolve: (globalState) => of(globalState),
         mapToState: (globalState) => globalState
       })
     }),
-    map(({ actionType, featureKey }) => [ actionType, featureKey ])
+    map(({ actionType, featureKey, state }) => [ actionType, featureKey, state ])
   )
 
-  const devtoolsResult$ = $$resolution$.pipe(
+  const devtoolsResolution$ = $$resolution$.pipe(
     switchMap(({ actionType, featureKey, state, error }) => {
-      return globalSyncOnlyVex.once({
+      return globalVex.once({
         type: (error ? '[RESOLVED (with error)] ' : '[RESOLVED] ') + actionType,
-        resolve: async () => undefined,
+        resolve: (globalState) => of(globalState),
         mapToState: (globalState) => mapFeatureStateToGlobal(featureKey, globalState, state),
       })
     }),
-    map(({ actionType, featureKey }) => [ actionType, featureKey ])
+    map(({ actionType, featureKey, state }) => [ actionType, featureKey, state ])
   )
 
-  merge(devtoolsDispatch$, devtoolsResult$)
-    .pipe(withLatestFrom(globalSyncOnlyVex.state$))
-    .subscribe(([ [ type, featureKey ], state ]) => {
-      const message = { type: `[${featureKey || 'APP_ROOT'}] ${type}` }
+  merge(devtoolsDispatch$, devtoolsResolution$)
+    .subscribe(([ type, featureKey, state ]) => {
+      const message = { type: `[${featureKey || APP_ROOT}] ${type}` }
       devTools.send(message, state)
       if (devtoolsOptions && devtoolsOptions.logTrace) {
         console.group(JSON.stringify(message))
@@ -286,53 +344,8 @@ export function setUpDevtools(
       }
     })
 
-  // if (subs.length) {
-  //   subs.forEach(s => {
-  //     if (s.unsubscribe) {
-  //       s.unsubscribe()
-  //     } else if (typeof s === 'function') {
-  //       s()
-  //     }
-  //   })
-  // }
-
-  // subs.push(
-  //   $$deleteStore.subscribe(storeName => {
-  //     delete appState[storeName];
-  //     devTools.send({ type: `[${storeName}] - Delete Store` }, appState);
-  //   })
-  // );
-
   devTools.subscribe((message) => {
-    // if (message.type === 'ACTION') {
-    //   const [storeName] = message.payload.split('.')
-
-    //   if(__stores__[storeName]) {
-    //     (ngZoneOrOptions as NgZoneLike).run(() => {
-    //       const funcCall = message.payload.replace(storeName, `this['${storeName}']`);
-    //       try {
-    //         new Function(`${funcCall}`).call(__stores__);
-    //       } catch(e) {
-    //         console.warn('Unknown Method ☹️');
-    //       }
-    //     });
-    //   }
-    // }
-
-    if (message.type === 'DISPATCH') {
-      const payloadType = message.payload.type
-
-      if (payloadType === 'COMMIT') {
-        globalSyncOnlyVex.state$.pipe(first()).subscribe((appState) => {
-          devTools.init(appState)
-        })
-        return
-      }
-
-      if (message.state) {
-        globalSyncOnlyVex.dispatch({ type: '[devtools] ' + message.type, resolve: () => message.state })
-      }
-    }
+    console.log(message)
   })
 }
 
@@ -340,7 +353,7 @@ function mapFeatureStateToGlobal(_featureKey: string | undefined, globalState: a
   const featureKey = _featureKey || ''
   const lookups = featureKey.split('.')
 
-  if (lookups.length === 0 && lookups[0] === '') {
+  if (lookups.length === 1 && lookups[0] === '') {
     // Is root.
     return featureState
   }
@@ -366,12 +379,11 @@ export function configureDevtoolsForInstance<StateType, ResultType>(
   dispatch$: Observable<Action<StateType, ResultType>>,
   resolution$: Observable<ActionResult<StateType>>,
 ): void {
-  if (globalSyncOnlyVex) {
-    globalSyncOnlyVex.state$.pipe(first()).subscribe((appState) => {
+  if (globalVex) {
+    globalVex.state$.pipe(first()).subscribe((appState) => {
       devTools.send({ type: `[${featureKey || 'APP_ROOT'}] @@INIT` }, appState)
       $$dispatch$$.next(dispatch$ as Observable<AuditableAction<StateType, ResultType>>)
       $$resolution$$.next(resolution$ as Observable<ActionResult<StateType>>)
     })
   }
 }
-

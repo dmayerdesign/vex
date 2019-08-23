@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http'
 import { Injectable } from '@angular/core'
 import { Vex } from 'projects/vex/src/lib/vex'
 import { Observable } from 'rxjs'
-import { AppAction, AppState } from './test.model'
+import { AppAction, AppState } from '../app.model'
 
 @Injectable()
 export class AppApi {

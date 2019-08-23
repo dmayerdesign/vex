@@ -2,8 +2,8 @@ import { Component, OnInit } from '@angular/core'
 import { Vex } from 'projects/vex/src/lib/vex'
 import { Observable } from 'rxjs'
 import { map } from 'rxjs/operators'
+import { AppAction, AppState } from '../app.model'
 import { AppApi } from './test.api'
-import { AppAction, AppState } from './test.model'
 
 @Component({
   selector: 'app-test',
