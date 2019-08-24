@@ -79,7 +79,6 @@ export class Vex<StateType> implements Vex<StateType> {
     { allowConcurrency, devtoolsOptions }: VexOptions = { allowConcurrency: true },
     featureKey?: string,
   ) {
-    console.log('initializing Vex for', featureKey)
     const initialResult: ActionResult<StateType> = {
       state: this._initialState,
       actionType: 'INITIALIZE_STATE'
@@ -252,7 +251,7 @@ export function createVexForFeature(
   initialState: any,
   options: VexOptions,
 ): Vex<any> {
-  console.log('create vex for feature')
+  setUpDevtools(options.devtoolsOptions)
   const vex = new Vex(initialState, options, featureKey)
   featureKeyVexMap.set(featureKey, vex)
   return vex
@@ -304,11 +303,16 @@ export function setUpDevtools(
     return
   }
   if (devTools) {
-    throw new Error('Attempted to call `setUpDevtools` more than once.')
+    return
   }
 
   const mergedOptions = Object.assign({}, DEFAULT_DEVTOOLS_OPTIONS, devtoolsOptions)
-  devTools = (window as any).__REDUX_DEVTOOLS_EXTENSION__.connect(mergedOptions)
+  globalVex.state$.pipe(first()).subscribe((state) =>
+    devTools = (window as any).__REDUX_DEVTOOLS_EXTENSION__.connect(
+      state,
+      mergedOptions
+    )
+  )
 
   const devtoolsDispatch$ = $$dispatch$.pipe(
     switchMap(({ type }) => {
@@ -333,6 +337,7 @@ export function setUpDevtools(
   )
 
   merge(devtoolsDispatch$, devtoolsResolution$)
+    .pipe(filter(() => !!devTools))
     .subscribe(([ type, featureKey, state ]) => {
       const message = { type: `[${featureKey || APP_ROOT}] ${type}` }
       devTools.send(message, state)

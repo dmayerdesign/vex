@@ -2,9 +2,10 @@
  * Public API Surface of vex
  */
 export {
-  VexInterface as Vex, // Forbid consumers from constructing a `Vex` with `new`.
-  VexOptions,
-  createVexForRoot,
-  createVexForFeature
-} from './lib/vex'
-export * from './lib/vex.module'
+  Manager,
+  VexManagerOptions,
+  createManagerForRoot,
+  createManagerForFeature,
+  setUpDevtools,
+} from './lib/vex2'
+export * from './lib/vex2.module'
