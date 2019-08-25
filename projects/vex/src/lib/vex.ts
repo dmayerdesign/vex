@@ -29,7 +29,6 @@ export interface UniqueActionResult<StateType> extends ActionResult<StateType> {
 export interface Manager<StateType> {
   state$: Observable<StateType>
   getLookupKey(): string
-  jumpToState(state: StateType): void
   dispatch<ActionType extends Action<StateType>>(
     action: ActionType
   ): void
@@ -38,6 +37,8 @@ export interface Manager<StateType> {
   ): Observable<ActionResult<StateType>>
   dispatches(actionType?: string): Observable<ActionResult<StateType>>
   results(actionType?: string): Observable<ActionResult<StateType>>
+  /** @internal - Not part of the public API and subject to change. Use at your own risk. */
+  _jumpToState(state: StateType): void
 }
 
 export interface VexManagerOptions {
@@ -153,7 +154,7 @@ export function createManager<StateType>(
   const _actionAuditß = new Subject<Action<StateType>>()
   const _stateOverrideß = new Subject<StateType>()
   const getLookupKey = () => lookupKey
-  const jumpToState = (state: StateType) => _stateOverrideß.next(state)
+  const _jumpToState = (state: StateType) => _stateOverrideß.next(state)
   let state$: Observable<StateType>
   let _resolution$: Observable<ActionResult<StateType>>
   let _dispatchAudit$: Observable<Action<StateType>>
@@ -281,7 +282,7 @@ export function createManager<StateType>(
   return {
     state$,
     getLookupKey,
-    jumpToState,
+    _jumpToState,
     dispatch,
     once,
     dispatches,
@@ -378,10 +379,10 @@ export function setUpDevTools(
             managers.forEach((manager) => {
               const lookupKey = manager.getLookupKey()
               if (lookupKey === VEX_ROOT) {
-                manager.jumpToState(topLevelState)
+                manager._jumpToState(topLevelState)
               }
               else {
-                manager.jumpToState(mapGlobalStateToNested(manager.getLookupKey(), globalState))
+                manager._jumpToState(mapGlobalStateToNested(manager.getLookupKey(), globalState))
               }
             })
           })

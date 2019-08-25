@@ -1,6 +1,6 @@
 # Vex
 
-Vex is a simple, lightweight, asynchronous state manager for JavaScript and TypeScript.
+Vex is a simple, lightweight, asynchronous state manager for JavaScript user interfaces.
 
 
 ## Installation
@@ -10,16 +10,7 @@ Vex is a simple, lightweight, asynchronous state manager for JavaScript and Type
 
 ## API Overview
 
-### Vex\<StateType>
-
-> **constructor(** <br>
-  &nbsp;&nbsp;&nbsp;&nbsp;***initialState:* StateType,** <br>
-  &nbsp;&nbsp;&nbsp;&nbsp;***options?:* { allowConcurrency: boolean }** <br>
-  **)** <br>
-  Each `Vex` instance must be initialized with an `initialState`. <br>
-  `allowConcurrency` defaults to `true`; if set to `false`, an Action dispatched before
-  the previous Action has resolved will be queued and executed immediately when the
-  previous Action resolves (using RxJS's `concatMap`).
+### Manager\<StateType>
 
 > **state$: Observable\<StateType>** <br>
   An Observable of the `Vex`'s state. Will emit at least one value to any subscriber.
@@ -28,37 +19,42 @@ Vex is a simple, lightweight, asynchronous state manager for JavaScript and Type
   Dispatches an Action.
 
 > **once( *action:* Action ): Observable\<ActionResult\<StateType>>** <br>
-  Dispatches an asynchronous Action and returns an Observable of the result.
+  Dispatches an Action and returns an Observable of the result.
 
-> **dispatches( *actionType*: string ): Observable\<ActionResult\<StateType>>** <br>
-  Returns an Observable that emits each time an action of the given `actionType` is
-  dispatched, and before it resolves.
+> **dispatches( *actionType?:* string ): Observable\<ActionResult\<StateType>>** <br>
+  Returns an Observable that emits each time an action is dispatched, and before it
+  resolves. If an `actionType` is provided, filters the returned Observable to only emit
+  dispatches of that `actionType`.
 
-> **results( *actionType*: string ): Observable\<ActionResult\<StateType>>** <br>
-  Returns an Observable that emits each time an action of the given `actionType` is
-  resolved.
+> **results( *actionType?:* string ): Observable\<ActionResult\<StateType>>** <br>
+  Returns an Observable that emits each time an action is resolved. If an `actionType` is
+  provided, filters the returned Observable to only emit results of that `actionType`.
 
-### Action\<StateType, ResultType>
+### createManager\<StateType>
+
+> *parameter* ***initialState:* StateType** <br>
+  (*required*) Each manager must be initialized with an `initialState`.
+
+> *parameter* ***options?:* VexManagerOptions**
+
+### VexManagerOptions
+
+> **allowConcurrency: boolean** <br>
+  (*optional*) `allowConcurrency` defaults to `true`; if set to `false`, an Action dispatched before
+  the previous Action has resolved will be queued and executed immediately when the
+  previous Action resolves (using RxJS's `concatMap`).
+
+### Action\<StateType>
 
 > **type: string** <br>
-  (*required*) A unique identifier for the Action.
+  (*required*) A string representing the category of the action.
   
-> **resolve( *state:* StateType ): (** <br>
-  &nbsp;&nbsp;&nbsp;&nbsp;**Partial\<StateType>** <br>
-  &nbsp;&nbsp;&nbsp;&nbsp;**| Promise\<ResultType>** <br>
-  &nbsp;&nbsp;&nbsp;&nbsp;**| Observable\<ResultType>** <br>
+> **resolve( *state$:* Observable\<StateType> ): (** <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;**Promise\<StateType>** <br>
+  &nbsp;&nbsp;&nbsp;&nbsp;**| Observable\<StateType>** <br>
   **)** <br>
-  (*required*) The business logic associated with the Action. For a synchronous action,
-  the return value is merged into the current state via `Object.assign`. If `mapToState`
-  is present, `resolve` is assumed to be asynchronous; once it resolves, the result is
-  passed to `mapToState` and merged into the current state via `Object.assign`.
-
-> **mapToState(** <br>
-  &nbsp;&nbsp;&nbsp;&nbsp;***state:* StateType,** <br>
-  &nbsp;&nbsp;&nbsp;&nbsp;***result?:* ResultType** <br>
-  **): Partial\<StateType>** <br>
-  (*optional*) Present only if `resolve` returns an Observable or Promise. Maps the result
-  of the Promise or the first value emitted by the Observable to the Vex's state.
+  (*required*) The business logic associated with the Action. Analagous to a reducer
+  function in Redux.
 
 ### ActionResult\<StateType>
 
@@ -68,6 +64,51 @@ Vex is a simple, lightweight, asynchronous state manager for JavaScript and Type
 > **actionType: string** (*required*)
 
 > **error?: any** (*optional*)
+
+
+## Configuring Redux DevTools
+
+Vex integrates with Redux DevTools to allow you to visualize your app's state over time,
+including the ability to time-travel through your app's history.
+
+To configure DevTools, simply call `setUpDevTools` with an optional `DevtoolsOptions`
+as the only argument.
+
+In Angular, `setUpDevTools` must be invoked inside of an `NgZone#run` callback, like so:
+
+```ts
+import { Component, NgZone } from '@angular/core'
+import { setUpDevTools } from 'projects/vex/src/lib/vex'
+
+@Component({
+  /* ... */
+})
+export class AppComponent {
+  constructor(ngZone: NgZone) {
+    ngZone.run(() => setUpDevTools())
+  }
+}
+```
+
+### DevToolsOptions
+
+> **name: string**
+
+> **maxAge: number**
+
+> **latency?: number**
+
+> **actionsBlacklist?: string[]**
+
+> **actionsWhitelist?: string[]**
+
+> **shouldCatchErrors?: boolean**
+
+> **logTrace?: boolean**
+
+> **predicate?: (state: any, action: any) => boolean**
+
+> **shallow?: boolean**
 
 
 ## Background
@@ -116,8 +157,8 @@ export const initialState: AppState = {
 import { HttpClient } from '@angular/common/http'
 import { Injectable } from '@angular/core'
 import { Vex } from '@dannymayer/vex'
-import { Observable } from 'rxjs'
-import { first, map, switchMap } from 'rxjs/operators'
+import { of, Observable } from 'rxjs'
+import { first, map, switchMap, withLatestFrom } from 'rxjs/operators'
 import { AppAction, AppState } from './app.model'
 
 @Injectable()
@@ -133,10 +174,12 @@ export class AppService {
         return this._manager
             .once({
                 type: AppAction.CREATE_TODO,
-                resolve: (state) => this._httpClient.post('/api/todo', { todo }),
-                mapToState: (state, { todoMessage }) => ({
-                    todos: [ ...state.todos, todoMessage ]
-                }),
+                resolve: (state$) => this._httpClient.post('/api/todo', { todo }).pipe(
+                    withLatestFrom(state$),
+                    map(([state, { todoMessage }]) => ({
+                        todos: [ ...state.todos, todoMessage ]
+                    })),
+                ),
             })
             .pipe(map(({ state }) => state))
     }
@@ -146,16 +189,16 @@ export class AppService {
     public deleteTodo(todoIndex: number): Observable<AppState> {
         this._manager.dispatch({
             type: AppAction.DELETE_TODO,
-            resolve: (state) => ({
+            resolve: (state$) => of({
                 todos: [
                     ...state.todos.slice(0, todoIndex),
                     ...state.todos.slice(todoIndex + 1),
                 ]
-            })
+            }),
         })
         return this._httpClient.delete(`/api/todo/${todoIndex}`).pipe(
             switchMap(() => this._manager.state$),
-            first()
+            first(),
         )
     }
 }
@@ -183,49 +226,3 @@ import { AppService } from './app.service'
 })
 export class AppModule { }
 ```
-
-
-## Configuring Redux DevTools
-
-Vex integrates with Redux DevTools to allow you to visualize your app's state over time,
-including the ability to time-travel through your app's history.
-
-To configure DevTools, simply call `setUpDevTools` with an optional `DevtoolsOptions`
-as the only argument.
-
-In Angular, `setUpDevTools` must be invoked inside of an `NgZone#run` callback, like so:
-
-```ts
-import { Component, NgZone } from '@angular/core'
-import { setUpDevTools } from 'projects/vex/src/lib/vex'
-
-@Component({
-  /* ... */
-})
-export class AppComponent {
-  constructor(ngZone: NgZone) {
-    ngZone.run(() => setUpDevTools())
-  }
-}
-```
-
-
-### DevToolsOptions
-
-> **name: string**
-
-> **maxAge: number**
-
-> **latency?: number**
-
-> **actionsBlacklist?: string[]**
-
-> **actionsWhitelist?: string[]**
-
-> **shouldCatchErrors?: boolean**
-
-> **logTrace?: boolean**
-
-> **predicate?: (state: any, action: any) => boolean**
-
-> **shallow?: boolean**
