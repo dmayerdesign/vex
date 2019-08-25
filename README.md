@@ -68,7 +68,7 @@ Vex is a simple, lightweight, asynchronous state manager for JavaScript user int
 
 ## Configuring Redux DevTools
 
-Vex integrates with Redux DevTools to allow you to visualize your app's state over time,
+Vex integrates with [Redux DevTools](https://chrome.google.com/webstore/detail/redux-devtools/lmhkpmbekcpmknklioeibfkpmmfibljd?hl=en) to allow you to visualize your app's state over time,
 including the ability to time-travel through your app's history.
 
 To configure DevTools, simply call `setUpDevTools` with an optional `DevtoolsOptions`
@@ -78,11 +78,9 @@ In Angular, `setUpDevTools` must be invoked inside of an `NgZone#run` callback, 
 
 ```ts
 import { Component, NgZone } from '@angular/core'
-import { setUpDevTools } from 'projects/vex/src/lib/vex'
+import { setUpDevTools } from '@dannymayer/vex'
 
-@Component({
-  /* ... */
-})
+@Component(/* ... */)
 export class AppComponent {
   constructor(ngZone: NgZone) {
     ngZone.run(() => setUpDevTools())
@@ -157,7 +155,7 @@ export const initialState: AppState = {
 import { HttpClient } from '@angular/common/http'
 import { Injectable } from '@angular/core'
 import { Vex } from '@dannymayer/vex'
-import { of, Observable } from 'rxjs'
+import { Observable } from 'rxjs'
 import { first, map, switchMap, withLatestFrom } from 'rxjs/operators'
 import { AppAction, AppState } from './app.model'
 
@@ -189,12 +187,13 @@ export class AppService {
     public deleteTodo(todoIndex: number): Observable<AppState> {
         this._manager.dispatch({
             type: AppAction.DELETE_TODO,
-            resolve: (state$) => of({
+            resolve: (state$) => state$.pipe(map((state) => ({
+                ...state,
                 todos: [
                     ...state.todos.slice(0, todoIndex),
                     ...state.todos.slice(todoIndex + 1),
-                ]
-            }),
+                ],
+            }))),
         })
         return this._httpClient.delete(`/api/todo/${todoIndex}`).pipe(
             switchMap(() => this._manager.state$),

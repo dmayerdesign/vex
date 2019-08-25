@@ -1,8 +1,8 @@
 import { Injectable } from '@angular/core'
-import { of, throwError, Observable } from 'rxjs'
-import { delay, switchMapTo } from 'rxjs/operators'
-import { Vex } from '../../lib/vex'
-import { TestAppAction, TestAppState, TestProduct } from './test-app.model'
+import { throwError, Observable } from 'rxjs'
+import { delay, first, map, switchMapTo } from 'rxjs/operators'
+import { Manager } from '../../lib/vex'
+import { TestAppAction, TestAppState } from './test-app.model'
 
 @Injectable()
 export class TestAppApi {
@@ -10,7 +10,7 @@ export class TestAppApi {
   public cartTotal$: Observable<number>
 
   constructor(
-    private _manager: Vex<TestAppState>
+    private _manager: Manager<TestAppState>
   ) {
     // Side effect.
     // Test synchronous resolution.
@@ -20,14 +20,14 @@ export class TestAppApi {
           this._manager.dispatch({
             type: TestAppAction.CART_UPDATE_TOTAL,
             // Synchronous resolution.
-            resolve: (state) => ({
+            resolve: (state$) => state$.pipe(map((state) => ({
               cart: {
                 ...state.cart,
                 total: state.cart.products.reduce(
                   (total, { price }) => total + price, 0
                 )
               }
-            })
+            })))
           })
         }
       }
@@ -38,16 +38,10 @@ export class TestAppApi {
     this._manager.dispatch({
       type: TestAppAction.CART_ADD_PRODUCT,
       // Async resolution using Observable.
-      resolve: () => of({ name: 'Product', price: 10 }).pipe(delay(delayMs)),
-      mapToState: (state: TestAppState, product: TestProduct) => ({
-        cart: {
-          ...state.cart,
-          products: [
-            ...state.cart.products,
-            product
-          ]
-        }
-      })
+      resolve: (state$) => state$.pipe(
+        map((state) => ({ ...state, name: 'Product', price: 10 })),
+        delay(delayMs),
+      ),
     })
   }
 
@@ -55,15 +49,11 @@ export class TestAppApi {
     this._manager.dispatch({
       type: TestAppAction.CART_ADD_PRODUCT,
       // Async resolution using Promise.
-      resolve: () => of({
-        name: 'Product',
-        price: 10,
-      })
+      resolve: (state$) => state$
         .pipe(
           delay(100),
           switchMapTo(throwError(new Error('Test error')))
         ),
-      mapToState: (state: TestAppState) => state
     })
   }
 
@@ -71,19 +61,22 @@ export class TestAppApi {
     this._manager.dispatch({
       type: TestAppAction.CART_ADD_PRODUCT,
       // Async resolution using Promise.
-      resolve: () => Promise.resolve({
-        name: 'Product',
-        price: 10,
-      }),
-      mapToState: (state, product: TestProduct) => ({
-        cart: {
-          ...state.cart,
-          products: [
-            ...state.cart.products,
-            product
-          ]
-        }
-      })
+      resolve: async (state$) => {
+        const state = await state$.pipe(first()).toPromise()
+        return Promise.resolve({
+            name: 'Product',
+            price: 10,
+          })
+          .then((product) => ({
+            cart: {
+              ...state.cart,
+              products: [
+                ...state.cart.products,
+                product
+              ]
+            }
+          }))
+      },
     })
   }
 
@@ -92,7 +85,6 @@ export class TestAppApi {
       type: TestAppAction.CART_ADD_PRODUCT,
       // Async resolution using Promise.
       resolve: () => Promise.reject(new Error('Test error')),
-      mapToState: (state) => state
     })
   }
 
@@ -100,7 +92,7 @@ export class TestAppApi {
     this._manager.dispatch({
       type: TestAppAction.CART_ADD_PRODUCT,
       // Synchronous resolution.
-      resolve: (state) => ({
+      resolve: (state$) => state$.pipe(map((state) => ({
         cart: {
           ...state.cart,
           products: [
@@ -111,7 +103,7 @@ export class TestAppApi {
             }
           ]
         }
-      })
+      })))
     })
   }
 

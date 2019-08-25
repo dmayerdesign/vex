@@ -29,11 +29,11 @@ export interface UniqueActionResult<StateType> extends ActionResult<StateType> {
 export interface Manager<StateType> {
   state$: Observable<StateType>
   getLookupKey(): string
-  dispatch<ActionType extends Action<StateType>>(
-    action: ActionType
+  dispatch(
+    action: Action<StateType>
   ): void
-  once<ActionType extends Action<StateType>>(
-    action: ActionType
+  once(
+    action: Action<StateType>
   ): Observable<ActionResult<StateType>>
   dispatches(actionType?: string): Observable<ActionResult<StateType>>
   results(actionType?: string): Observable<ActionResult<StateType>>
