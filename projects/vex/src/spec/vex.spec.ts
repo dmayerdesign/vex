@@ -157,7 +157,7 @@ describe('Vex', () => {
         numProducts = state.cart.products.length
       })
     api.testDispatchSync()
-    expect(numProducts).toBe(1)
+    expect(numProducts as number | null).toBe(1)
   })
 
   it('(Sync) should signal intent and react to intent', () => {
@@ -175,8 +175,8 @@ describe('Vex', () => {
         cartTotal = state.cart.total
       })
     api.testDispatchSync()
-    expect(numProducts).toBe(1)
-    expect(cartTotal).toBe(0)
+    expect(numProducts as number | null).toBe(1)
+    expect(cartTotal as number | null).toBe(0)
   })
 
   it('(Sync) should handle an error', () => {
@@ -207,6 +207,7 @@ describe('Vex', () => {
 
     let resolvedCount = 0
     vex.results(TestAppAction.CART_ADD_PRODUCT).subscribe(({ state }) => {
+      console.log(state.cart.products)
       resolvedCount++
       expect(resolvedCount).toBeLessThanOrEqual(5)
       if (resolvedCount === 5) {

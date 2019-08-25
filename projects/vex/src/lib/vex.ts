@@ -73,11 +73,6 @@ const getDevToolsExtension = () => window ? (window as any).__REDUX_DEVTOOLS_EXT
 let devTools: any
 
 const vex_managers$ = new BehaviorSubject<Manager<any>[]>([])
-const devToolsLookupKeys$ = vex_managers$.pipe(
-  map((managers) => managers.map(
-    ({ getLookupKey }) => getLookupKey()
-  ))
-)
 const vex_result$: Observable<GlobalActionResult> = vex_managers$.pipe(
   switchMap((managers) => {
     const result$List = managers.map(
@@ -156,6 +151,8 @@ export function createManager<StateType>(
   const getLookupKey = () => lookupKey
   const _jumpToState = (state: StateType) => _stateOverrideß.next(state)
   let state$: Observable<StateType>
+  const _getState$ = () => state$
+
   let _resolution$: Observable<ActionResult<StateType>>
   let _dispatchAudit$: Observable<Action<StateType>>
 
@@ -202,7 +199,7 @@ export function createManager<StateType>(
   ): Observable<ActionResult<StateType>> {
     const isSync = typeof action.reduce === 'function'
     const reduce = action.reduce as (state: StateType) => StateType
-    const resolve = action.resolve as (state: Observable<StateType>) => Observable<StateType> | Promise<StateType>
+    const resolve = action.resolve as (state$: Observable<StateType>) => Observable<StateType> | Promise<StateType>
 
     if (isSync) {
       // Handle synchronous success or error.
@@ -245,9 +242,9 @@ export function createManager<StateType>(
   }
 
   if (!options.allowConcurrency) {
-    _resolution$ = defer(() => _actionß.pipe(
+    _resolution$ = _actionß.pipe(
       tap((action) => _actionAuditß.next(action)),
-      withLatestFrom(state$ || of(initialState)),
+      withLatestFrom(_getState$() || of(initialState)),
       concatMap(([ action, state ]) => _resolve(state, action)),
       scan(
         (_ = initialResult, result) => result,
@@ -255,7 +252,7 @@ export function createManager<StateType>(
       ),
       startWith(initialResult),
       shareReplay(1),
-    ))
+    )
   }
   else {
     _resolution$ = _actionß.pipe(
@@ -271,8 +268,7 @@ export function createManager<StateType>(
   state$ = merge(
     _stateOverrideß,
     _resolution$.pipe(
-      map(({ state }) => state),
-      shareReplay(1),
+      map(({ state }) => state)
     ),
   )
   _dispatchAudit$ = _actionAuditß.asObservable()

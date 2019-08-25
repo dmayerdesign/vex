@@ -20,14 +20,14 @@ export class TestAppApi {
           this._manager.dispatch({
             type: TestAppAction.CART_UPDATE_TOTAL,
             // Synchronous resolution.
-            resolve: (state$) => state$.pipe(map((state) => ({
+            reduce: (state) => ({
               cart: {
                 ...state.cart,
                 total: state.cart.products.reduce(
                   (total, { price }) => total + price, 0
                 )
               }
-            })))
+            })
           })
         }
       }
@@ -92,7 +92,7 @@ export class TestAppApi {
     this._manager.dispatch({
       type: TestAppAction.CART_ADD_PRODUCT,
       // Synchronous resolution.
-      resolve: (state$) => state$.pipe(map((state) => ({
+      reduce: (state) => ({
         cart: {
           ...state.cart,
           products: [
@@ -103,14 +103,14 @@ export class TestAppApi {
             }
           ]
         }
-      })))
+      })
     })
   }
 
   public testDispatchSyncThrow(): void {
     this._manager.dispatch({
       type: TestAppAction.CART_ADD_PRODUCT,
-      resolve: () => {
+      reduce: () => {
         throw new Error('Test error')
       }
     })

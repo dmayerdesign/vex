@@ -12,58 +12,60 @@ Vex is a simple, lightweight, asynchronous state manager for JavaScript user int
 
 ### Manager\<StateType>
 
-> **state$: Observable\<StateType>** <br>
+<!-- > **state$: Observable\<StateType>** <br> -->
+> `state$: Observable<StateType>` <br>
   An Observable of the `Vex`'s state. Will emit at least one value to any subscriber.
 
-> **dispatch( *action:* Action ): void** <br>
+> `dispatch(action: Action): void` <br>
   Dispatches an Action.
 
-> **once( *action:* Action ): Observable\<ActionResult\<StateType>>** <br>
+> `once(action: Action): Observable<ActionResult<StateType>>` <br>
   Dispatches an Action and returns an Observable of the result.
 
-> **dispatches( *actionType?:* string ): Observable\<ActionResult\<StateType>>** <br>
+> `dispatches(actionType?: string): Observable<ActionResult<StateType>>` <br>
   Returns an Observable that emits each time an action is dispatched, and before it
   resolves. If an `actionType` is provided, filters the returned Observable to only emit
   dispatches of that `actionType`.
 
-> **results( *actionType?:* string ): Observable\<ActionResult\<StateType>>** <br>
+> `results(actionType?: string): Observable<ActionResult<StateType>>` <br>
   Returns an Observable that emits each time an action is resolved. If an `actionType` is
   provided, filters the returned Observable to only emit results of that `actionType`.
 
 ### createManager\<StateType>
 
-> *parameter* ***initialState:* StateType** <br>
+> *parameter* `initialState: StateType` <br>
   (*required*) Each manager must be initialized with an `initialState`.
 
-> *parameter* ***options?:* VexManagerOptions**
+> *parameter* `options?: VexManagerOptions` *(optional)*
 
 ### VexManagerOptions
 
-> **allowConcurrency: boolean** <br>
-  (*optional*) `allowConcurrency` defaults to `true`; if set to `false`, an Action dispatched before
+> `allowConcurrency: boolean` <br>
+  (*optional*) Defaults to `true`; if set to `false`, an Action dispatched before
   the previous Action has resolved will be queued and executed immediately when the
   previous Action resolves (using RxJS's `concatMap`).
 
 ### Action\<StateType>
 
-> **type: string** <br>
+> `type: string` <br>
   (*required*) A string representing the category of the action.
   
-> **resolve( *state$:* Observable\<StateType> ): (** <br>
-  &nbsp;&nbsp;&nbsp;&nbsp;**Promise\<StateType>** <br>
-  &nbsp;&nbsp;&nbsp;&nbsp;**| Observable\<StateType>** <br>
-  **)** <br>
-  (*required*) The business logic associated with the Action. Analagous to a reducer
-  function in Redux.
+> `reduce(state: StateType): StateType`
+  (*required*) The business logic associated with a synchronous Action. Analagous to a
+  reducer function in Redux, in that it returns the new state of the manager.
+
+> `resolve(state$: Observable<StateType>): Promise<StateType> | Observable<StateType>`
+  (*required*) The business logic associated with an asynchronous Action. Returns a
+  Promise or Observable of the new state of the manager.
 
 ### ActionResult\<StateType>
 
-> **state: StateType** <br>
+> `state: StateType` <br>
   (*required*) A snapshot of the state at the time the `ActionResult` was created.
 
-> **actionType: string** (*required*)
+> `actionType: string` (*required*)
 
-> **error?: any** (*optional*)
+> `error?: any` (*optional*)
 
 
 ## Configuring Redux DevTools
@@ -90,23 +92,23 @@ export class AppComponent {
 
 ### DevToolsOptions
 
-> **name: string**
+> `name: string`
 
-> **maxAge: number**
+> `maxAge: number`
 
-> **latency?: number**
+> `latency?: number`
 
-> **actionsBlacklist?: string[]**
+> `actionsBlacklist?: string[]`
 
-> **actionsWhitelist?: string[]**
+> `actionsWhitelist?: string[]`
 
-> **shouldCatchErrors?: boolean**
+> `shouldCatchErrors?: boolean`
 
-> **logTrace?: boolean**
+> `logTrace?: boolean`
 
-> **predicate?: (state: any, action: any) => boolean**
+> `predicate?: (state: any, action: any) => boolean`
 
-> **shallow?: boolean**
+> `shallow?: boolean`
 
 
 ## Background
@@ -187,13 +189,13 @@ export class AppService {
     public deleteTodo(todoIndex: number): Observable<AppState> {
         this._manager.dispatch({
             type: AppAction.DELETE_TODO,
-            resolve: (state$) => state$.pipe(map((state) => ({
+            reduce: (state) => ({
                 ...state,
                 todos: [
                     ...state.todos.slice(0, todoIndex),
                     ...state.todos.slice(todoIndex + 1),
                 ],
-            }))),
+            }),
         })
         return this._httpClient.delete(`/api/todo/${todoIndex}`).pipe(
             switchMap(() => this._manager.state$),
