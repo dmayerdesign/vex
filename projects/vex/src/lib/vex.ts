@@ -1,222 +1,239 @@
-import { empty, from, merge, of, Observable, Subject } from 'rxjs'
+import { defer, from, merge, of, zip, BehaviorSubject, Observable, Subject } from 'rxjs'
 import { catchError, concatMap, filter, first, map, mergeScan, scan, share, shareReplay, startWith, switchMap, tap, withLatestFrom } from 'rxjs/operators'
 
-const DEFAULT_MAX_AGE = 25
-const DEFAULT_DEVTOOLS_OPTIONS: Partial<DevtoolsOptions> = {
-  name: 'Vex',
-  maxAge: DEFAULT_MAX_AGE,
-}
-const APP_ROOT = 'APP_ROOT'
-
-let globalVex: Vex<any>
-const featureKeyVexMap = new Map<string, Vex<any>>()
-
-export interface VexOptions {
-  allowConcurrency?: boolean,
-  devtoolsOptions?: DevtoolsOptions
-}
-
-export interface SyncAction<StateType> {
+/**
+ * `Action` is the unit of work in a vex state manager.
+ */
+export interface Action<StateType> {
   type: string
-  resolve: (state: StateType) => Partial<StateType>
+  reduce?(state: StateType): StateType,
+  resolve?(
+    state: Observable<StateType>
+  ): Observable<StateType> | Promise<StateType>
 }
-
-export interface AsyncAction<StateType, ResultType> {
-  type: string
-  resolve: (state: StateType) => (
-    Promise<ResultType> | Observable<ResultType>
-  )
-  mapToState: (state: StateType, result?: ResultType) => Partial<StateType>
-}
-
-export type Action<StateType, ResultType = never> = SyncAction<StateType> | AsyncAction<StateType, ResultType>
-
-export type AuditableAction<StateType, ResultType = never> = Action<StateType, ResultType> & { featureKey: string }
 
 export interface ActionResult<StateType> {
-  state: StateType
   actionType: string
+  state: StateType
   error?: Error
-  featureKey?: string
 }
 
-export interface UniqueAction<StateType, ResultType = any> extends AsyncAction<StateType, ResultType> {
-  _id?: Symbol
+export interface GlobalActionResult extends ActionResult<any> {
+  lookupKey: string
 }
 
 export interface UniqueActionResult<StateType> extends ActionResult<StateType> {
-  _actionId?: Symbol
+  action: Action<StateType>
 }
 
-export interface VexInterface<StateType> {
-  history$: Observable<StateType[]>
+export interface Manager<StateType> {
   state$: Observable<StateType>
-
-  dispatch<ActionType extends Action<StateType, any> = Action<StateType, any>>(
+  getLookupKey(): string
+  jumpToState(state: StateType): void
+  dispatch<ActionType extends Action<StateType>>(
     action: ActionType
   ): void
-
-  once<ActionType extends AsyncAction<StateType, any>>(
+  once<ActionType extends Action<StateType>>(
     action: ActionType
   ): Observable<ActionResult<StateType>>
-
-  dispatches(actionType: string): Observable<ActionResult<StateType>>
-
-  results(actionType: string): Observable<ActionResult<StateType>>
+  dispatches(actionType?: string): Observable<ActionResult<StateType>>
+  results(actionType?: string): Observable<ActionResult<StateType>>
 }
 
-export class Vex<StateType> implements Vex<StateType> {
-  private readonly _actionß = new Subject<Action<StateType, any>>()
-  private readonly _actionAuditß = new Subject<AuditableAction<StateType, any>>()
-  private readonly _resolution$: Observable<ActionResult<StateType>>
-  private readonly _dispatchAudit$: Observable<Action<StateType, any>>
-  private readonly _maxAge: number = DEFAULT_MAX_AGE
-  public history$: Observable<StateType[]>
-  public state$: Observable<StateType>
+export interface VexManagerOptions {
+  allowConcurrency?: boolean
+}
 
+/**
+ * Adapted from https://github.com/datorama/akita/blob/master/akita/src/devTools.ts.
+*/
+export interface DevToolsOptions {
+  /** instance name visible in devTools */
+  name: string
+  /**  maximum allowed actions to be stored in the history tree */
+  maxAge: number
+  latency?: number
+  actionsBlacklist?: string[]
+  actionsWhitelist?: string[]
+  shouldCatchErrors?: boolean
+  logTrace?: boolean
+  predicate?: (state: any, action: any) => boolean
+  shallow?: boolean
+}
+
+// Globals.
+const VEX_ROOT = '__VEX_ROOT__'
+const DEFAULT_MAX_AGE = 25
+const DEFAULT_DEVTOOLS_OPTIONS: Partial<DevToolsOptions> = {
+  name: 'Vex',
+  maxAge: DEFAULT_MAX_AGE,
+}
+const getDevToolsExtension = () => window ? (window as any).__REDUX_DEVTOOLS_EXTENSION__ : undefined
+let devTools: any
+
+const vex_managers$ = new BehaviorSubject<Manager<any>[]>([])
+const devToolsLookupKeys$ = vex_managers$.pipe(
+  map((managers) => managers.map(
+    ({ getLookupKey }) => getLookupKey()
+  ))
+)
+const vex_result$: Observable<GlobalActionResult> = vex_managers$.pipe(
+  switchMap((managers) => {
+    const result$List = managers.map(
+      ({ results, getLookupKey }) => results().pipe(
+        map((result) => ({ ...result, lookupKey: getLookupKey() }))
+      )
+    )
+    return merge(...result$List)
+  }),
+)
+const vex_dispatch$: Observable<{ actionType: string, lookupKey: string }> = vex_managers$.pipe(
+  switchMap((managers) => {
+    const dispatch$List = managers.map(
+      ({ dispatches, getLookupKey }) => dispatches().pipe(
+        map(({ actionType }) => ({ actionType, lookupKey: getLookupKey() }))
+      )
+    )
+    return merge(...dispatch$List)
+  }),
+)
+const vex_state$ = vex_managers$.pipe(
+  switchMap((managers) => {
+    const stateAndLookupKey$List = managers.map(
+      ({ state$, getLookupKey }) => state$.pipe(
+        map((state) => ({ state, lookupKey: getLookupKey() }))
+      )
+    )
+    return zip(...stateAndLookupKey$List).pipe(
+      map((stateAndLookupKeyList) => {
+        return stateAndLookupKeyList.reduce((globalState, { state, lookupKey }) => {
+          if (lookupKey === VEX_ROOT) {
+            return {
+              ...globalState,
+              ...state,
+            }
+          } else {
+            return mapNestedStateToGlobal(lookupKey, globalState, state)
+          }
+        }, {} as ActionResult<any> & { [lookupKey: string]: ActionResult<any> })
+      })
+    )
+  }),
+)
+
+export function addManager<StateType>(
+  manager: Manager<StateType>,
+): void {
+  vex_managers$.next([
+    ...vex_managers$.getValue(),
+    manager,
+  ])
+}
+
+export class Manager<StateType> {
   constructor(
-    private _initialState: StateType,
-    { allowConcurrency, devtoolsOptions }: VexOptions = { allowConcurrency: true },
-    featureKey?: string,
+    initialState: StateType,
+    options: VexManagerOptions = {
+      allowConcurrency: true,
+    },
+    lookupKey = VEX_ROOT
   ) {
-    const initialResult: ActionResult<StateType> = {
-      state: this._initialState,
-      actionType: 'INITIALIZE_STATE'
-    }
+    return createManager(initialState, options, lookupKey)
+  }
+}
 
-    if (devtoolsOptions) {
-      if (devtoolsOptions.maxAge) {
-        this._maxAge = devtoolsOptions.maxAge
-      }
-    }
-    if (!allowConcurrency) {
-      this._resolution$ = this._actionß.pipe(
-        tap((action) => this._actionAuditß.next(Object.assign({ ...action, featureKey }))),
-        withLatestFrom(this.state$ || of(this._initialState)),
-        concatMap(([action, state]) => this._resolve(state, action)),
-        scan(
-          (_ = initialResult, result) => result,
-          initialResult,
-        ),
-        startWith(initialResult),
-        shareReplay(1),
-      )
-    }
-    else {
-      this._resolution$ = this._actionß.pipe(
-        tap((action) => this._actionAuditß.next(Object.assign({ ...action, featureKey }))),
-        mergeScan<Action<StateType, any>, ActionResult<StateType>>(
-          ({ state } = initialResult, action) => this._resolve(state, action),
-          initialResult,
-        ),
-        startWith(initialResult),
-        shareReplay(1),
-      )
-    }
-    this.state$ = this._resolution$.pipe(
-      map(({ state }) => state),
-      shareReplay(1),
-    )
-    this.history$ = this.state$.pipe(
-      scan((history: StateType[], state: StateType) => {
-        if (history.length === this._maxAge) {
-          history.shift()
-        }
-        history.push(state)
-        return history
-      }, [] as StateType[]),
-      shareReplay(1),
-    )
-    this._dispatchAudit$ = this._actionAuditß.asObservable()
-    this._dispatchAudit$.subscribe()
-    this.state$.subscribe()
+export function createManager<StateType>(
+  initialState: StateType,
+  options: VexManagerOptions = {
+    allowConcurrency: true,
+  },
+  lookupKey = VEX_ROOT
+): Manager<StateType> {
+  const _actionß = new Subject<Action<StateType>>()
+  const _actionAuditß = new Subject<Action<StateType>>()
+  const _stateOverrideß = new Subject<StateType>()
+  const getLookupKey = () => lookupKey
+  const jumpToState = (state: StateType) => _stateOverrideß.next(state)
+  let state$: Observable<StateType>
+  let _resolution$: Observable<ActionResult<StateType>>
+  let _dispatchAudit$: Observable<Action<StateType>>
 
-    configureDevtoolsForInstance(
-      featureKey,
-      this._dispatchAudit$,
-      this._resolution$
-    )
+  const initialResult: ActionResult<StateType> = {
+    state: initialState,
+    actionType: 'INITIALIZE_STATE'
   }
 
-  public dispatch<ActionType extends Action<StateType, any> = Action<StateType, any>>(
+  function dispatch<ActionType extends Action<StateType>>(
     action: ActionType
   ): void {
-    return this._actionß.next(action)
+    return _actionß.next(action)
   }
 
-  public once<ActionType extends AsyncAction<StateType, any>>(
+  function once<ActionType extends Action<StateType>>(
     action: ActionType
   ): Observable<ActionResult<StateType>> {
-    const actionId = Symbol()
-    const uniqueAction: UniqueAction<StateType, any> = {
-      ...action,
-      _id: actionId
-    }
-    this.dispatch(uniqueAction)
-    return this.results(action.type).pipe(
-      filter<UniqueActionResult<StateType>>(({ _actionId }) => _actionId === actionId),
+    dispatch(action)
+    return results(action.type).pipe(
+      filter<UniqueActionResult<StateType>>(({ action: _action }) => action === _action),
       first(),
     )
   }
 
-  public dispatches(actionType: string): Observable<ActionResult<StateType>> {
-    return this._dispatchAudit$.pipe(
-      filter((action) => action.type === actionType),
-      withLatestFrom(this.state$),
+  function dispatches(actionType?: string): Observable<ActionResult<StateType>> {
+    return _dispatchAudit$.pipe(
+      filter((action) => !actionType ? true : action.type === actionType),
+      withLatestFrom(state$),
       map(([ action, state ]) => ({ actionType: action.type, state })),
       share(),
     )
   }
 
-  public results(actionType: string): Observable<ActionResult<StateType>> {
-    return this._resolution$.pipe(
-      filter((result) => result.actionType === actionType),
+  function results(actionType?: string): Observable<ActionResult<StateType>> {
+    return _resolution$.pipe(
+      filter((result) => !actionType ? true : result.actionType === actionType),
       share(),
     )
   }
 
-  private _resolve<ResultType = any>(
+  function _resolve(
     state: StateType,
-    action: Action<StateType, ResultType>
+    action: Action<StateType>
   ): Observable<ActionResult<StateType>> {
-    let unresolvedResult: Partial<StateType> | Promise<any> | Observable<any>
+    const isSync = typeof action.reduce === 'function'
+    const reduce = action.reduce as (state: StateType) => StateType
+    const resolve = action.resolve as (state: Observable<StateType>) => Observable<StateType> | Promise<StateType>
 
-    // Handle synchronous error.
-    try {
-      unresolvedResult = action.resolve(state)
-    } catch (error) {
-      return of({
-        actionType: action.type,
-        state,
-        error,
-      })
+    if (isSync) {
+      // Handle synchronous success or error.
+      try {
+        const newState = reduce(state)
+        return of({
+          actionType: action.type,
+          state: Object.assign(state, newState)
+        })
+      } catch (error) {
+        return of({
+          actionType: action.type,
+          state,
+          error,
+        })
+      }
     }
-
-    // Handle asynchronous success or error.
-    if (
-      typeof (unresolvedResult as Promise<any>).then === 'function'
-      || typeof (unresolvedResult as Observable<any>).subscribe === 'function'
-    ) {
-      return from(unresolvedResult as Promise<any> | Observable<any>).pipe(
+    else {
+      // Handle asynchronous success or error.
+      return from(resolve(state$)).pipe(
         first(),
-        withLatestFrom(this.state$),
-        map<[any, StateType], UniqueActionResult<StateType>>(
-          ([result, currentState = this._initialState]) => ({
-            _actionId: (action as UniqueAction<StateType>)._id,
+        map(
+          (newState) => ({
+            action,
             actionType: action.type,
-            state: Object.assign(
-              currentState,
-              (action as AsyncAction<StateType, any>).mapToState(
-                currentState,
-                result,
-              ),
-            ),
+            state: newState,
           })
         ),
-        catchError((error) => this.state$.pipe(
+        catchError((error) => state$.pipe(
           first(),
           map((_state) => ({
-            _actionId: (action as UniqueAction<StateType>)._id,
+            action,
             actionType: action.type,
             state: _state,
             error,
@@ -224,143 +241,163 @@ export class Vex<StateType> implements Vex<StateType> {
         )),
       )
     }
-
-    // Handle synchronous success.
-    return of({
-      actionType: action.type,
-      state: Object.assign(state, unresolvedResult)
-    })
-  }
-}
-
-class GlobalVex extends Vex<any> { }
-globalVex = new GlobalVex({})
-
-export function createVexForRoot(
-  initialState: any,
-  options: VexOptions,
-): Vex<any> {
-  setUpDevtools(options.devtoolsOptions)
-  const vex = new Vex(initialState, options)
-  featureKeyVexMap.set(APP_ROOT, vex)
-  return vex
-}
-
-export function createVexForFeature(
-  featureKey: string,
-  initialState: any,
-  options: VexOptions,
-): Vex<any> {
-  setUpDevtools(options.devtoolsOptions)
-  const vex = new Vex(initialState, options, featureKey)
-  featureKeyVexMap.set(featureKey, vex)
-  return vex
-}
-
-/**
- * Adapted from https://github.com/datorama/akita/blob/master/akita/src/devtools.ts.
-*/
-export interface DevtoolsOptions {
-  /** instance name visible in devtools */
-  name: string
-  /**  maximum allowed actions to be stored in the history tree */
-  maxAge?: number
-  // latency: number
-  // actionsBlacklist: string[]
-  // actionsWhitelist: string[]
-  // shouldCatchErrors: boolean
-  logTrace?: boolean
-  // predicate: (state: any, action: any) => boolean
-  // shallow: boolean
-}
-
-export interface NgZoneLike { run: any }
-
-/** Singleton. */
-let devTools: any
-const $$dispatch$$ = new Subject<Observable<AuditableAction<any, any>>>()
-const $$resolution$$ = new Subject<Observable<ActionResult<any>>>()
-const $$dispatch$ = $$dispatch$$.pipe(
-  mergeScan(
-    (mergedDispatch$, dispatch$) => of([ ...mergedDispatch$, dispatch$ ]),
-    [ empty() ] as Observable<AuditableAction<any, any>>[]
-  ),
-  switchMap((dispatch$List) => merge(...dispatch$List)),
-)
-const $$resolution$ = $$resolution$$.pipe(
-  mergeScan(
-    (mergedresolution$, resolution$) => of([ ...mergedresolution$, resolution$ ]),
-    [ empty() ] as Observable<ActionResult<any>>[]
-  ),
-  switchMap((resolution$List) => merge(...resolution$List)),
-)
-
-export function setUpDevtools(
-  devtoolsOptions?: DevtoolsOptions,
-): void {
-  if (!window) return
-  if (!(window as any).__REDUX_DEVTOOLS_EXTENSION__) {
-    return
-  }
-  if (devTools) {
-    return
   }
 
-  const mergedOptions = Object.assign({}, DEFAULT_DEVTOOLS_OPTIONS, devtoolsOptions)
-  globalVex.state$.pipe(first()).subscribe((state) =>
-    devTools = (window as any).__REDUX_DEVTOOLS_EXTENSION__.connect(
-      state,
-      mergedOptions
+  if (!options.allowConcurrency) {
+    _resolution$ = defer(() => _actionß.pipe(
+      tap((action) => _actionAuditß.next(action)),
+      withLatestFrom(state$ || of(initialState)),
+      concatMap(([ action, state ]) => _resolve(state, action)),
+      scan(
+        (_ = initialResult, result) => result,
+        initialResult,
+      ),
+      startWith(initialResult),
+      shareReplay(1),
+    ))
+  }
+  else {
+    _resolution$ = _actionß.pipe(
+      tap((action) => _actionAuditß.next(action)),
+      mergeScan<Action<StateType>, ActionResult<StateType>>(
+        ({ state } = initialResult, action) => _resolve(state, action),
+        initialResult,
+      ),
+      startWith(initialResult),
+      shareReplay(1),
     )
+  }
+  state$ = merge(
+    _stateOverrideß,
+    _resolution$.pipe(
+      map(({ state }) => state),
+      shareReplay(1),
+    ),
   )
+  _dispatchAudit$ = _actionAuditß.asObservable()
+  _dispatchAudit$.subscribe()
+  state$.subscribe()
 
-  const devtoolsDispatch$ = $$dispatch$.pipe(
-    switchMap(({ type }) => {
-      return globalVex.once({
-        type: '[DISPATCHED] ' + type,
-        resolve: (globalState) => of(globalState),
-        mapToState: (globalState) => globalState
-      })
-    }),
-    map(({ actionType, featureKey, state }) => [ actionType, featureKey, state ])
-  )
+  return {
+    state$,
+    getLookupKey,
+    jumpToState,
+    dispatch,
+    once,
+    dispatches,
+    results,
+  }
+}
 
-  const devtoolsResolution$ = $$resolution$.pipe(
-    switchMap(({ actionType, featureKey, state, error }) => {
-      return globalVex.once({
-        type: (error ? '[RESOLVED (with error)] ' : '[RESOLVED] ') + actionType,
-        resolve: (globalState) => of(globalState),
-        mapToState: (globalState) => mapFeatureStateToGlobal(featureKey, globalState, state),
-      })
-    }),
-    map(({ actionType, featureKey, state }) => [ actionType, featureKey, state ])
-  )
+export function createManagerForRoot(
+  initialState: any,
+  options: VexManagerOptions,
+): Manager<any> {
+  const manager = createManager(initialState, options)
+  addManager(manager)
+  return manager
+}
 
-  merge(devtoolsDispatch$, devtoolsResolution$)
-    .pipe(filter(() => !!devTools))
-    .subscribe(([ type, featureKey, state ]) => {
-      const message = { type: `[${featureKey || APP_ROOT}] ${type}` }
-      devTools.send(message, state)
-      if (devtoolsOptions && devtoolsOptions.logTrace) {
+export function createManagerForFeature(
+  lookupKey: string,
+  initialState: any,
+  options: VexManagerOptions,
+): Manager<any> {
+  const manager = createManager(initialState, options, lookupKey)
+  addManager(manager)
+  return manager
+}
+
+export function setUpDevTools(
+  devToolsOptions = DEFAULT_DEVTOOLS_OPTIONS
+): void {
+  _setUpDevTools()
+  function _setUpDevTools(): void {
+    if (!getDevToolsExtension()) {
+      return
+    }
+    if (devTools) {
+      return
+    }
+
+    const mergedOptions = Object.assign({}, DEFAULT_DEVTOOLS_OPTIONS, devToolsOptions)
+    devTools = getDevToolsExtension().connect({}, mergedOptions)
+    const sendToDevTools = (message, globalState) => {
+      devTools.send(message, globalState)
+
+      if (devToolsOptions && devToolsOptions.logTrace) {
         console.group(JSON.stringify(message))
         // tslint:disable-next-line
         console.trace();
         console.groupEnd()
       }
-    })
+    }
 
-  devTools.subscribe((message) => {
-    console.log(message)
-  })
+    vex_result$
+      .pipe(
+        withLatestFrom(vex_state$),
+        filter(() => !!devTools),
+      )
+      .subscribe(([ result, globalState ]) => {
+        const type = (result.error ? '[RESOLVED (with error)] ' : '[RESOLVED] ') +
+          `[${result.lookupKey || VEX_ROOT}] ${result.actionType}`
+        const message = { type }
+        sendToDevTools(message, globalState)
+      })
+
+    vex_dispatch$
+      .pipe(filter(() => !!devTools), withLatestFrom(vex_state$))
+      .subscribe(([{ actionType, lookupKey }, globalState]) => {
+        const type = `[DISPATCHED] [${lookupKey || VEX_ROOT}] ${actionType}`
+        const message = { type }
+        sendToDevTools(message, globalState)
+      })
+
+    devTools.subscribe(({ type, state }) => {
+      if (!!state) {
+        const globalState = JSON.parse(state)
+        if (type === 'DISPATCH') {
+          vex_managers$.pipe(first()).subscribe((managers) => {
+            const topLevelState = managers.reduce((newGlobalState, manager) => {
+              const _newGlobalState = { ...newGlobalState }
+              const lookupKey = manager.getLookupKey()
+              if (lookupKey !== VEX_ROOT) {
+                if (lookupKey.indexOf('.') > 0 && lookupKey.indexOf('.') !== lookupKey.length - 1 ) {
+                  delete _newGlobalState[lookupKey]
+                }
+                else {
+                  const parentObject = mapGlobalStateToNested(
+                    lookupKey.substring(0, lookupKey.lastIndexOf('.')),
+                    _newGlobalState
+                  )
+                  delete parentObject[lookupKey.substring(lookupKey.lastIndexOf('.') + 1)]
+                }
+              }
+              return _newGlobalState
+            }, globalState)
+            managers.forEach((manager) => {
+              const lookupKey = manager.getLookupKey()
+              if (lookupKey === VEX_ROOT) {
+                manager.jumpToState(topLevelState)
+              }
+              else {
+                manager.jumpToState(mapGlobalStateToNested(manager.getLookupKey(), globalState))
+              }
+            })
+          })
+        }
+      }
+    })
+  }
 }
 
-function mapFeatureStateToGlobal(_featureKey: string | undefined, globalState: any, featureState: any): any {
-  const featureKey = _featureKey || ''
-  const lookups = featureKey.split('.')
+function mapNestedStateToGlobal(_lookupKey: string | undefined, globalState: any, nestedState: any): any {
+  const lookupKey = _lookupKey || ''
+  const lookups = lookupKey.split('.')
 
   if (lookups.length === 1 && lookups[0] === '') {
     // Is root.
-    return featureState
+    return nestedState
   }
 
   const newGlobalState = { ...globalState }
@@ -373,22 +410,27 @@ function mapFeatureStateToGlobal(_featureKey: string | undefined, globalState: a
     }
     parentObject = parentObject[lookup]
   })
-  parentObject[lastLookup] = featureState
+  parentObject[lastLookup] = nestedState
 
   return newGlobalState
 }
 
-/** @internal */
-export function configureDevtoolsForInstance<StateType, ResultType>(
-  featureKey: string | undefined,
-  dispatch$: Observable<Action<StateType, ResultType>>,
-  resolution$: Observable<ActionResult<StateType>>,
-): void {
-  if (globalVex) {
-    globalVex.state$.pipe(first()).subscribe((appState) => {
-      devTools.send({ type: `[${featureKey || 'APP_ROOT'}] @@INIT` }, appState)
-      $$dispatch$$.next(dispatch$ as Observable<AuditableAction<StateType, ResultType>>)
-      $$resolution$$.next(resolution$ as Observable<ActionResult<StateType>>)
-    })
+function mapGlobalStateToNested(lookupKey = '', globalState: any): any {
+  const lookups = lookupKey.split('.')
+
+  if (lookups.length === 1 && lookups[0] === '') {
+    // Is root.
+    return globalState
   }
+
+  let parentObject = globalState
+  const allButLastLookup = lookups.slice(0, lookups.length - 1)
+  const lastLookup = lookups[lookups.length - 1]
+  allButLastLookup.forEach((lookup) => {
+    if (!parentObject[lookup]) {
+      parentObject[lookup] = {}
+    }
+    parentObject = parentObject[lookup]
+  })
+  return parentObject[lastLookup]
 }

@@ -1,15 +1,15 @@
 import { InjectionToken, ModuleWithProviders, NgModule } from '@angular/core'
-import { createVexForFeature, createVexForRoot, Vex, VexOptions } from './vex'
+import { createManagerForFeature, createManagerForRoot, Manager, VexManagerOptions } from './vex'
 
 export const INITIAL_STATE = new InjectionToken<any>('INITIAL_STATE')
-export const OPTIONS = new InjectionToken<VexOptions>('OPTIONS')
+export const OPTIONS = new InjectionToken<VexManagerOptions>('OPTIONS')
 export const FEATURE_KEY = new InjectionToken<string>('FEATURE_KEY')
 
 @NgModule()
 export class VexModule {
   public static forRoot<StateType = unknown>(
     initialState: StateType,
-    options: VexOptions = {},
+    options: VexManagerOptions = {},
   ): ModuleWithProviders {
     return {
       ngModule: VexModule,
@@ -23,8 +23,8 @@ export class VexModule {
           useValue: options
         },
         {
-          provide: Vex,
-          useFactory: createVexForRoot,
+          provide: Manager,
+          useFactory: createManagerForRoot,
           deps: [ INITIAL_STATE, OPTIONS ]
         }
       ]
@@ -34,7 +34,7 @@ export class VexModule {
   public static forFeature<StateType = unknown>(
     featureKey: string,
     initialState: StateType,
-    options: VexOptions = {},
+    options: VexManagerOptions = {},
   ): ModuleWithProviders {
     return {
       ngModule: VexModule,
@@ -52,9 +52,9 @@ export class VexModule {
           useValue: featureKey,
         },
         {
-          provide: Vex,
-          useFactory: createVexForFeature,
-          deps: [ INITIAL_STATE, OPTIONS, FEATURE_KEY ],
+          provide: Manager,
+          useFactory: createManagerForFeature,
+          deps: [ FEATURE_KEY, INITIAL_STATE, OPTIONS ],
         },
       ],
     }

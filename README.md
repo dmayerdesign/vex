@@ -183,3 +183,49 @@ import { AppService } from './app.service'
 })
 export class AppModule { }
 ```
+
+
+## Configuring Redux DevTools
+
+Vex integrates with Redux DevTools to allow you to visualize your app's state over time,
+including the ability to time-travel through your app's history.
+
+To configure DevTools, simply call `setUpDevTools` with an optional `DevtoolsOptions`
+as the only argument.
+
+In Angular, `setUpDevTools` must be invoked inside of an `NgZone#run` callback, like so:
+
+```ts
+import { Component, NgZone } from '@angular/core'
+import { setUpDevTools } from 'projects/vex/src/lib/vex'
+
+@Component({
+  /* ... */
+})
+export class AppComponent {
+  constructor(ngZone: NgZone) {
+    ngZone.run(() => setUpDevTools())
+  }
+}
+```
+
+
+### DevToolsOptions
+
+> **name: string**
+
+> **maxAge: number**
+
+> **latency?: number**
+
+> **actionsBlacklist?: string[]**
+
+> **actionsWhitelist?: string[]**
+
+> **shouldCatchErrors?: boolean**
+
+> **logTrace?: boolean**
+
+> **predicate?: (state: any, action: any) => boolean**
+
+> **shallow?: boolean**

@@ -1,5 +1,5 @@
 import { Component, NgZone } from '@angular/core'
-import { setUpDevtools } from 'projects/vex/src/lib/vex2'
+import { setUpDevTools } from 'projects/vex/src/lib/vex'
 
 @Component({
   selector: 'app-root',
@@ -9,6 +9,6 @@ import { setUpDevtools } from 'projects/vex/src/lib/vex2'
 })
 export class AppComponent {
   constructor(ngZone: NgZone) {
-    ngZone.run(() => setUpDevtools())
+    ngZone.run(() => setUpDevTools())
   }
 }

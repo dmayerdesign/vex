@@ -6,6 +6,6 @@ export {
   VexManagerOptions,
   createManagerForRoot,
   createManagerForFeature,
-  setUpDevtools,
-} from './lib/vex2'
-export * from './lib/vex2.module'
+  setUpDevTools,
+} from './lib/vex'
+export * from './lib/vex.module'
