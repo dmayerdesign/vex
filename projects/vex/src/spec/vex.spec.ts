@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common'
 import { async, TestBed } from '@angular/core/testing'
-import { first, map, tap } from 'rxjs/operators'
-import { Vex } from '../lib/vex'
+import { first, map } from 'rxjs/operators'
+import { Manager } from '../lib/vex'
 import { VexModule } from '../lib/vex.module'
 import { TestAppApi } from './test-helpers/test-app.api'
 import { TestAppAction, TestAppState } from './test-helpers/test-app.model'
@@ -13,32 +13,20 @@ const initialAppState: TestAppState = {
   }
 }
 
-describe('Vex', () => {
-  beforeEach(async(() => TestBed
-    .configureTestingModule({
-      imports: [
-        CommonModule,
-        VexModule.forRoot(initialAppState)
-      ],
-      providers: [
-        TestAppApi
-      ]
-    })
-  ))
-
+function runTests(): void {
   it('should be created', () => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     expect(vex).toBeTruthy()
   })
 
   it('should initialize the state', async () => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     expect(await vex.state$.pipe(first()).toPromise())
       .toEqual(initialAppState)
   })
 
   it('(Observable) should react to a result', (done) => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchObservable()
     vex.dispatches(TestAppAction.CART_UPDATE_TOTAL)
@@ -51,9 +39,8 @@ describe('Vex', () => {
   })
 
   it('(Observable) should update the state and react to a result', (done) => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
-    api.testDispatchObservable()
     vex.results(TestAppAction.CART_ADD_PRODUCT)
       .pipe(
         map(({ state }) => state),
@@ -63,11 +50,13 @@ describe('Vex', () => {
         expect(state.cart.products.length).toBe(1)
         done()
       })
+    api.testDispatchObservable()
   })
 
   it('(Observable) should signal intent and react to intent', (done) => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
+
     api.testDispatchObservable()
     vex.dispatches(TestAppAction.CART_UPDATE_TOTAL)
       .pipe(
@@ -82,7 +71,7 @@ describe('Vex', () => {
   })
 
   it('(Observable) should handle an error', (done) => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchObservableThrow()
     vex.results(TestAppAction.CART_ADD_PRODUCT)
@@ -90,7 +79,7 @@ describe('Vex', () => {
         map(({ error }) => error),
         first(),
       )
-      .subscribe((error) => {
+      .subscribe((error: Error) => {
         expect(error).toBeTruthy()
         expect(error.message).toBe('Test error')
         done()
@@ -98,7 +87,7 @@ describe('Vex', () => {
   })
 
   it('(Promise) should update the state and react to a result', (done) => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchPromise()
     vex.results(TestAppAction.CART_ADD_PRODUCT)
@@ -112,8 +101,8 @@ describe('Vex', () => {
       })
   })
 
-  it('(Promise) should signal intent and react to intent', (done) => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+  it('(Promise) should signal intent and react to intent', async (done) => {
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchPromise()
     vex.dispatches(TestAppAction.CART_UPDATE_TOTAL)
@@ -129,7 +118,7 @@ describe('Vex', () => {
   })
 
   it('(Promise) should handle an error', (done) => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchPromiseThrow()
     vex.results(TestAppAction.CART_ADD_PRODUCT)
@@ -137,7 +126,7 @@ describe('Vex', () => {
         map(({ error }) => error),
         first(),
       )
-      .subscribe((error) => {
+      .subscribe((error: Error) => {
         expect(error).toBeTruthy()
         expect(error.message).toBe('Test error')
         done()
@@ -145,9 +134,9 @@ describe('Vex', () => {
   })
 
   it('(Sync) should update the state and react to a result', () => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
-    let numProducts: number
+    let numProducts: number | null = null
     vex.results(TestAppAction.CART_ADD_PRODUCT)
       .pipe(
         map(({ state }) => state),
@@ -157,14 +146,14 @@ describe('Vex', () => {
         numProducts = state.cart.products.length
       })
     api.testDispatchSync()
-    expect(numProducts).toBe(1)
+    expect(numProducts as number | null).toBe(1)
   })
 
   it('(Sync) should signal intent and react to intent', () => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
-    let numProducts: number
-    let cartTotal: number
+    let numProducts: number | null = null
+    let cartTotal: number | null = null
     vex.dispatches(TestAppAction.CART_UPDATE_TOTAL)
       .pipe(
         map(({ state }) => state),
@@ -175,12 +164,12 @@ describe('Vex', () => {
         cartTotal = state.cart.total
       })
     api.testDispatchSync()
-    expect(numProducts).toBe(1)
-    expect(cartTotal).toBe(0)
+    expect(numProducts as number | null).toBe(1)
+    expect(cartTotal as number | null).toBe(0)
   })
 
   it('(Sync) should handle an error', () => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchSyncThrow()
     vex.results(TestAppAction.CART_ADD_PRODUCT)
@@ -188,14 +177,14 @@ describe('Vex', () => {
         map(({ error }) => error),
         first(),
       )
-      .subscribe((error) => {
+      .subscribe((error: Error) => {
         expect(error).toBeTruthy()
         expect(error.message).toBe('Test error')
       })
   })
 
   it('(Observable) should correctly mutate state during concurrent async actions', (done) => {
-    const vex: Vex<TestAppState> = TestBed.get(Vex)
+    const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
     const getRandomDelayMs = () => Math.random() * 1000
 
@@ -215,4 +204,34 @@ describe('Vex', () => {
       }
     })
   })
+}
+
+describe('Vex', () => {
+  beforeEach(async(() => TestBed
+    .configureTestingModule({
+      imports: [
+        CommonModule,
+        VexModule.forRoot(initialAppState)
+      ],
+      providers: [
+        TestAppApi
+      ]
+    })
+  ))
+  runTests()
+})
+
+describe('Vex with `allowConcurrency: false`', () => {
+  beforeEach(async(() => TestBed
+    .configureTestingModule({
+      imports: [
+        CommonModule,
+        VexModule.forRoot(initialAppState, { allowConcurrency: false }),
+      ],
+      providers: [
+        TestAppApi
+      ]
+    })
+  ))
+  runTests()
 })

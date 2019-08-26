@@ -1,11 +1,12 @@
 import { HttpClientModule } from '@angular/common/http'
 import { NgModule } from '@angular/core'
 import { BrowserModule } from '@angular/platform-browser'
+import { RouterModule } from '@angular/router'
 import { VexModule } from 'projects/vex/src/public-api'
 import { AppComponent } from './app.component'
+import { initialAppState } from './app.model'
 import { AppApi } from './test-component/test.api'
 import { TestComponent } from './test-component/test.component'
-import { initialAppState } from './test-component/test.model'
 
 @NgModule({
   declarations: [
@@ -15,6 +16,16 @@ import { initialAppState } from './test-component/test.model'
   imports: [
     BrowserModule,
     HttpClientModule,
+    RouterModule.forRoot([
+      {
+        path: '',
+        component: TestComponent
+      },
+      {
+        path: 'feature',
+        loadChildren: () => import('./feature/feature.module').then(mod => mod.FeatureModule)
+      }
+    ]),
     VexModule.forRoot(initialAppState, { allowConcurrency: true }),
   ],
   providers: [
