@@ -13,19 +13,7 @@ const initialAppState: TestAppState = {
   }
 }
 
-describe('Vex', () => {
-  beforeEach(async(() => TestBed
-    .configureTestingModule({
-      imports: [
-        CommonModule,
-        VexModule.forRoot(initialAppState)
-      ],
-      providers: [
-        TestAppApi
-      ]
-    })
-  ))
-
+function runTests(): void {
   it('should be created', () => {
     const vex: Manager<TestAppState> = TestBed.get(Manager)
     expect(vex).toBeTruthy()
@@ -53,7 +41,6 @@ describe('Vex', () => {
   it('(Observable) should update the state and react to a result', (done) => {
     const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
-    api.testDispatchObservable()
     vex.results(TestAppAction.CART_ADD_PRODUCT)
       .pipe(
         map(({ state }) => state),
@@ -63,11 +50,13 @@ describe('Vex', () => {
         expect(state.cart.products.length).toBe(1)
         done()
       })
+    api.testDispatchObservable()
   })
 
   it('(Observable) should signal intent and react to intent', (done) => {
     const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
+
     api.testDispatchObservable()
     vex.dispatches(TestAppAction.CART_UPDATE_TOTAL)
       .pipe(
@@ -112,7 +101,7 @@ describe('Vex', () => {
       })
   })
 
-  it('(Promise) should signal intent and react to intent', (done) => {
+  it('(Promise) should signal intent and react to intent', async (done) => {
     const vex: Manager<TestAppState> = TestBed.get(Manager)
     const api: TestAppApi = TestBed.get(TestAppApi)
     api.testDispatchPromise()
@@ -207,7 +196,6 @@ describe('Vex', () => {
 
     let resolvedCount = 0
     vex.results(TestAppAction.CART_ADD_PRODUCT).subscribe(({ state }) => {
-      console.log(state.cart.products)
       resolvedCount++
       expect(resolvedCount).toBeLessThanOrEqual(5)
       if (resolvedCount === 5) {
@@ -216,4 +204,34 @@ describe('Vex', () => {
       }
     })
   })
+}
+
+describe('Vex', () => {
+  beforeEach(async(() => TestBed
+    .configureTestingModule({
+      imports: [
+        CommonModule,
+        VexModule.forRoot(initialAppState)
+      ],
+      providers: [
+        TestAppApi
+      ]
+    })
+  ))
+  runTests()
+})
+
+describe('Vex with `allowConcurrency: false`', () => {
+  beforeEach(async(() => TestBed
+    .configureTestingModule({
+      imports: [
+        CommonModule,
+        VexModule.forRoot(initialAppState, { allowConcurrency: false }),
+      ],
+      providers: [
+        TestAppApi
+      ]
+    })
+  ))
+  runTests()
 })

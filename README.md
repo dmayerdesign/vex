@@ -12,9 +12,8 @@ Vex is a simple, lightweight, asynchronous state manager for JavaScript user int
 
 ### Manager\<StateType>
 
-<!-- > **state$: Observable\<StateType>** <br> -->
 > `state$: Observable<StateType>` <br>
-  An Observable of the `Vex`'s state. Will emit at least one value to any subscriber.
+  An Observable of the manager's state. Will emit at least one value to any subscriber.
 
 > `dispatch(action: Action): void` <br>
   Dispatches an Action.

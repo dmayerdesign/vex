@@ -1,5 +1,5 @@
 import { defer, from, merge, of, zip, BehaviorSubject, Observable, Subject } from 'rxjs'
-import { catchError, concatMap, filter, first, map, mergeScan, scan, share, shareReplay, startWith, switchMap, tap, withLatestFrom } from 'rxjs/operators'
+import { catchError, concatMap, filter, first, map, mergeScan, scan, share, shareReplay, skip, startWith, switchMap, tap, withLatestFrom } from 'rxjs/operators'
 
 /**
  * `Action` is the unit of work in a vex state manager.
@@ -63,8 +63,11 @@ export interface DevToolsOptions {
 }
 
 // Globals.
-const VEX_ROOT = '__VEX_ROOT__'
+const VEX_ROOT = '__ROOT__'
 const DEFAULT_MAX_AGE = 25
+const DEFAULT_MANAGER_OPTIONS = {
+  allowConcurrency: true,
+}
 const DEFAULT_DEVTOOLS_OPTIONS: Partial<DevToolsOptions> = {
   name: 'Vex',
   maxAge: DEFAULT_MAX_AGE,
@@ -140,21 +143,19 @@ export class Manager<StateType> {
 
 export function createManager<StateType>(
   initialState: StateType,
-  options: VexManagerOptions = {
-    allowConcurrency: true,
-  },
+  options: VexManagerOptions = {},
   lookupKey = VEX_ROOT
 ): Manager<StateType> {
+  const _dispatchß = new Subject<Action<StateType>>()
   const _actionß = new Subject<Action<StateType>>()
-  const _actionAuditß = new Subject<Action<StateType>>()
   const _stateOverrideß = new Subject<StateType>()
   const getLookupKey = () => lookupKey
   const _jumpToState = (state: StateType) => _stateOverrideß.next(state)
   let state$: Observable<StateType>
-  const _getState$ = () => state$
 
   let _resolution$: Observable<ActionResult<StateType>>
-  let _dispatchAudit$: Observable<Action<StateType>>
+
+  options = Object.assign(DEFAULT_MANAGER_OPTIONS, options)
 
   const initialResult: ActionResult<StateType> = {
     state: initialState,
@@ -164,6 +165,7 @@ export function createManager<StateType>(
   function dispatch<ActionType extends Action<StateType>>(
     action: ActionType
   ): void {
+    _dispatchß.next(action)
     return _actionß.next(action)
   }
 
@@ -178,10 +180,16 @@ export function createManager<StateType>(
   }
 
   function dispatches(actionType?: string): Observable<ActionResult<StateType>> {
-    return _dispatchAudit$.pipe(
+    return _dispatchß.pipe(
       filter((action) => !actionType ? true : action.type === actionType),
-      withLatestFrom(state$),
-      map(([ action, state ]) => ({ actionType: action.type, state })),
+      // For some reason `switchMap` works, but the terser `withLatestFrom, map` does not.
+      switchMap((action) => state$.pipe(
+        first(),
+        map((state) => ({
+          actionType: action.type,
+          state,
+        }))
+      )),
       share(),
     )
   }
@@ -197,17 +205,16 @@ export function createManager<StateType>(
     state: StateType,
     action: Action<StateType>
   ): Observable<ActionResult<StateType>> {
-    const isSync = typeof action.reduce === 'function'
-    const reduce = action.reduce as (state: StateType) => StateType
-    const resolve = action.resolve as (state$: Observable<StateType>) => Observable<StateType> | Promise<StateType>
-
-    if (isSync) {
+    if (action.reduce && action.resolve) {
+      throw new Error('[vex] An action may include either a `reduce` or `resolve` function, not both.')
+    }
+    else if (action.reduce) {
       // Handle synchronous success or error.
       try {
-        const newState = reduce(state)
+        const newState = action.reduce(state)
         return of({
           actionType: action.type,
-          state: Object.assign(state, newState)
+          state: Object.assign(state, newState),
         })
       } catch (error) {
         return of({
@@ -217,9 +224,9 @@ export function createManager<StateType>(
         })
       }
     }
-    else {
+    else if (action.resolve) {
       // Handle asynchronous success or error.
-      return from(resolve(state$)).pipe(
+      return from(action.resolve(state$)).pipe(
         first(),
         map(
           (newState) => ({
@@ -237,17 +244,18 @@ export function createManager<StateType>(
             error,
           })),
         )),
+        share(),
       )
     }
+    throw new Error('[vex] An action must include either a `reduce` or `resolve` function.')
   }
 
   if (!options.allowConcurrency) {
     _resolution$ = _actionß.pipe(
-      tap((action) => _actionAuditß.next(action)),
-      withLatestFrom(_getState$() || of(initialState)),
+      withLatestFrom(defer(() => state$)),
       concatMap(([ action, state ]) => _resolve(state, action)),
       scan(
-        (_ = initialResult, result) => result,
+        (_, result) => result,
         initialResult,
       ),
       startWith(initialResult),
@@ -256,7 +264,6 @@ export function createManager<StateType>(
   }
   else {
     _resolution$ = _actionß.pipe(
-      tap((action) => _actionAuditß.next(action)),
       mergeScan<Action<StateType>, ActionResult<StateType>>(
         ({ state } = initialResult, action) => _resolve(state, action),
         initialResult,
@@ -271,8 +278,7 @@ export function createManager<StateType>(
       map(({ state }) => state)
     ),
   )
-  _dispatchAudit$ = _actionAuditß.asObservable()
-  _dispatchAudit$.subscribe()
+
   state$.subscribe()
 
   return {
@@ -288,7 +294,7 @@ export function createManager<StateType>(
 
 export function createManagerForRoot(
   initialState: any,
-  options: VexManagerOptions,
+  options: VexManagerOptions = {},
 ): Manager<any> {
   const manager = createManager(initialState, options)
   addManager(manager)
@@ -298,7 +304,7 @@ export function createManagerForRoot(
 export function createManagerForFeature(
   lookupKey: string,
   initialState: any,
-  options: VexManagerOptions,
+  options: VexManagerOptions = {},
 ): Manager<any> {
   const manager = createManager(initialState, options, lookupKey)
   addManager(manager)
@@ -306,86 +312,83 @@ export function createManagerForFeature(
 }
 
 export function setUpDevTools(
-  devToolsOptions = DEFAULT_DEVTOOLS_OPTIONS
+  devToolsOptions = {} as DevToolsOptions,
 ): void {
-  _setUpDevTools()
-  function _setUpDevTools(): void {
-    if (!getDevToolsExtension()) {
-      return
+  if (!getDevToolsExtension()) {
+    return
+  }
+  if (devTools) {
+    return
+  }
+
+  const mergedOptions = Object.assign({}, DEFAULT_DEVTOOLS_OPTIONS, devToolsOptions)
+  devTools = getDevToolsExtension().connect({}, mergedOptions)
+  const sendToDevTools = (message: { type: string }, globalState: any) => {
+    devTools.send(message, globalState)
+
+    if (devToolsOptions && devToolsOptions.logTrace) {
+      console.group(JSON.stringify(message))
+      // tslint:disable-next-line
+      console.trace();
+      console.groupEnd()
     }
-    if (devTools) {
-      return
-    }
+  }
 
-    const mergedOptions = Object.assign({}, DEFAULT_DEVTOOLS_OPTIONS, devToolsOptions)
-    devTools = getDevToolsExtension().connect({}, mergedOptions)
-    const sendToDevTools = (message, globalState) => {
-      devTools.send(message, globalState)
+  vex_result$
+    .pipe(
+      withLatestFrom(vex_state$),
+      filter(() => !!devTools),
+    )
+    .subscribe(([ result, globalState ]) => {
+      const type = (result.error ? '[RESOLVED (with error)] ' : '[RESOLVED] ') +
+        `[${result.lookupKey || VEX_ROOT}] ${result.actionType}`
+      const message = { type }
+      sendToDevTools(message, globalState)
+    })
 
-      if (devToolsOptions && devToolsOptions.logTrace) {
-        console.group(JSON.stringify(message))
-        // tslint:disable-next-line
-        console.trace();
-        console.groupEnd()
-      }
-    }
+  vex_dispatch$
+    .pipe(filter(() => !!devTools), withLatestFrom(vex_state$))
+    .subscribe(([{ actionType, lookupKey }, globalState]) => {
+      const type = `[DISPATCHED] [${lookupKey || VEX_ROOT}] ${actionType}`
+      const message = { type }
+      sendToDevTools(message, globalState)
+    })
 
-    vex_result$
-      .pipe(
-        withLatestFrom(vex_state$),
-        filter(() => !!devTools),
-      )
-      .subscribe(([ result, globalState ]) => {
-        const type = (result.error ? '[RESOLVED (with error)] ' : '[RESOLVED] ') +
-          `[${result.lookupKey || VEX_ROOT}] ${result.actionType}`
-        const message = { type }
-        sendToDevTools(message, globalState)
-      })
-
-    vex_dispatch$
-      .pipe(filter(() => !!devTools), withLatestFrom(vex_state$))
-      .subscribe(([{ actionType, lookupKey }, globalState]) => {
-        const type = `[DISPATCHED] [${lookupKey || VEX_ROOT}] ${actionType}`
-        const message = { type }
-        sendToDevTools(message, globalState)
-      })
-
-    devTools.subscribe(({ type, state }) => {
-      if (!!state) {
-        const globalState = JSON.parse(state)
-        if (type === 'DISPATCH') {
-          vex_managers$.pipe(first()).subscribe((managers) => {
-            const topLevelState = managers.reduce((newGlobalState, manager) => {
-              const _newGlobalState = { ...newGlobalState }
-              const lookupKey = manager.getLookupKey()
-              if (lookupKey !== VEX_ROOT) {
-                if (lookupKey.indexOf('.') > 0 && lookupKey.indexOf('.') !== lookupKey.length - 1 ) {
-                  delete _newGlobalState[lookupKey]
-                }
-                else {
-                  const parentObject = mapGlobalStateToNested(
-                    lookupKey.substring(0, lookupKey.lastIndexOf('.')),
-                    _newGlobalState
-                  )
-                  delete parentObject[lookupKey.substring(lookupKey.lastIndexOf('.') + 1)]
-                }
-              }
-              return _newGlobalState
-            }, globalState)
-            managers.forEach((manager) => {
-              const lookupKey = manager.getLookupKey()
-              if (lookupKey === VEX_ROOT) {
-                manager._jumpToState(topLevelState)
+  devTools.subscribe(({ type, state }) => {
+    if (!!state) {
+      const globalState = JSON.parse(state)
+      if (type === 'DISPATCH') {
+        vex_managers$.pipe(first()).subscribe((managers) => {
+          const topLevelState = managers.reduce((newGlobalState, manager) => {
+            const _newGlobalState = { ...newGlobalState }
+            const lookupKey = manager.getLookupKey()
+            if (lookupKey !== VEX_ROOT) {
+              if (lookupKey.indexOf('.') > 0 && lookupKey.indexOf('.') !== lookupKey.length - 1 ) {
+                delete _newGlobalState[lookupKey]
               }
               else {
-                manager._jumpToState(mapGlobalStateToNested(manager.getLookupKey(), globalState))
+                const parentObject = mapGlobalStateToNested(
+                  lookupKey.substring(0, lookupKey.lastIndexOf('.')),
+                  _newGlobalState
+                )
+                delete parentObject[lookupKey.substring(lookupKey.lastIndexOf('.') + 1)]
               }
-            })
+            }
+            return _newGlobalState
+          }, globalState)
+          managers.forEach((manager) => {
+            const lookupKey = manager.getLookupKey()
+            if (lookupKey === VEX_ROOT) {
+              manager._jumpToState(topLevelState)
+            }
+            else {
+              manager._jumpToState(mapGlobalStateToNested(manager.getLookupKey(), globalState))
+            }
           })
-        }
+        })
       }
-    })
-  }
+    }
+  })
 }
 
 function mapNestedStateToGlobal(_lookupKey: string | undefined, globalState: any, nestedState: any): any {

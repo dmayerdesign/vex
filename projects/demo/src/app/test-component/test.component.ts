@@ -27,7 +27,6 @@ export class TestComponent implements OnInit {
   ) {
     this.state$ = this._manager.state$
     this.cartTotal$ = this._manager.state$.pipe(
-      tap(x => console.log(x)),
       map(({ cart }) => cart.total)
     )
   }
@@ -37,14 +36,14 @@ export class TestComponent implements OnInit {
     this._manager.results(AppAction.CART_ADD_PRODUCT).subscribe(
       () => this._manager.dispatch({
         type: AppAction.CART_UPDATE_TOTAL,
-        resolve: (state$) => state$.pipe(map((state) => ({
+        reduce: (state) => ({
           cart: {
             ...state.cart,
             total: state.cart.products.reduce(
               (total, { price }) => total + price, 0
             )
           }
-        })))
+        })
       })
     )
   }

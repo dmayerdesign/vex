@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core'
-import { throwError, Observable } from 'rxjs'
-import { delay, first, map, switchMapTo } from 'rxjs/operators'
+import { throwError, timer, Observable } from 'rxjs'
+import { delay, first, map, switchMapTo, tap } from 'rxjs/operators'
 import { Manager } from '../../lib/vex'
 import { TestAppAction, TestAppState } from './test-app.model'
 
@@ -15,19 +15,21 @@ export class TestAppApi {
     // Side effect.
     // Test synchronous resolution.
     this._manager.results(TestAppAction.CART_ADD_PRODUCT).subscribe(
-      ({ error }) => {
+      ({ error, state }) => {
         if (!error) {
           this._manager.dispatch({
             type: TestAppAction.CART_UPDATE_TOTAL,
             // Synchronous resolution.
-            reduce: (state) => ({
-              cart: {
-                ...state.cart,
-                total: state.cart.products.reduce(
-                  (total, { price }) => total + price, 0
-                )
+            reduce: (_state) => {
+              return {
+                cart: {
+                  ..._state.cart,
+                  total: _state.cart.products.reduce(
+                    (total, { price }) => total + price, 0
+                  )
+                }
               }
-            })
+            }
           })
         }
       }
@@ -38,10 +40,19 @@ export class TestAppApi {
     this._manager.dispatch({
       type: TestAppAction.CART_ADD_PRODUCT,
       // Async resolution using Observable.
-      resolve: (state$) => state$.pipe(
-        map((state) => ({ ...state, name: 'Product', price: 10 })),
-        delay(delayMs),
-      ),
+      resolve: (state$) => timer(delayMs).pipe(switchMapTo(state$.pipe(
+        first(),
+        map((state) => ({
+          ...state,
+          cart: {
+            ...state.cart,
+            products: [
+              ...state.cart.products,
+              { name: 'Product', price: 10 }
+            ]
+          }
+        })),
+      ))),
     })
   }
 
@@ -68,6 +79,7 @@ export class TestAppApi {
             price: 10,
           })
           .then((product) => ({
+            ...state,
             cart: {
               ...state.cart,
               products: [
