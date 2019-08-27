@@ -83,8 +83,8 @@ import { setUpDevTools } from '@dannymayer/vex'
 
 @Component(/* ... */)
 export class AppComponent {
-  constructor(ngZone: NgZone) {
-    ngZone.run(() => setUpDevTools())
+  constructor(private _ngZone: NgZone) {
+    _ngZone.run(() => setUpDevTools())
   }
 }
 ```
@@ -155,7 +155,7 @@ export const initialState: AppState = {
 ```ts
 import { HttpClient } from '@angular/common/http'
 import { Injectable } from '@angular/core'
-import { Vex } from '@dannymayer/vex'
+import { Manager } from '@dannymayer/vex'
 import { Observable } from 'rxjs'
 import { first, map, switchMap, withLatestFrom } from 'rxjs/operators'
 import { AppAction, AppState } from './app.model'
@@ -164,7 +164,7 @@ import { AppAction, AppState } from './app.model'
 export class AppService {
     constructor(
         private _httpClient: HttpClient,
-        private _manager: Vex<AppState>,
+        private _manager: Manager<AppState>,
     ) { }
 
     // This method dispatches an asynchronous action.
