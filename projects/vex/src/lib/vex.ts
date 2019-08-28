@@ -50,9 +50,9 @@ export interface VexManagerOptions {
 */
 export interface DevToolsOptions {
   /** instance name visible in devTools */
-  name: string
+  name?: string
   /**  maximum allowed actions to be stored in the history tree */
-  maxAge: number
+  maxAge?: number
   latency?: number
   actionsBlacklist?: string[]
   actionsWhitelist?: string[]
@@ -68,7 +68,7 @@ const DEFAULT_MAX_AGE = 25
 const DEFAULT_MANAGER_OPTIONS = {
   allowConcurrency: true,
 }
-const DEFAULT_DEVTOOLS_OPTIONS: Partial<DevToolsOptions> = {
+const DEFAULT_DEVTOOLS_OPTIONS: DevToolsOptions = {
   name: 'Vex',
   maxAge: DEFAULT_MAX_AGE,
 }
@@ -281,6 +281,42 @@ export function createManager<StateType>(
 
   state$.subscribe()
 
+  if (!!devTools) {
+    devTools.subscribe(({ type, state }) => {
+      if (!!state) {
+        const globalState = JSON.parse(state)
+        if (type === 'DISPATCH') {
+          vex_managers$.pipe(first()).subscribe((managers) => {
+            const topLevelState = managers.reduce((newGlobalState, manager) => {
+              const _newGlobalState = { ...newGlobalState }
+              if (lookupKey !== VEX_ROOT) {
+                if (lookupKey.indexOf('.') > 0 && lookupKey.indexOf('.') !== lookupKey.length - 1 ) {
+                  delete _newGlobalState[lookupKey]
+                }
+                else {
+                  const parentObject = mapGlobalStateToNested(
+                    lookupKey.substring(0, lookupKey.lastIndexOf('.')),
+                    _newGlobalState
+                  )
+                  delete parentObject[lookupKey.substring(lookupKey.lastIndexOf('.') + 1)]
+                }
+              }
+              return _newGlobalState
+            }, globalState)
+            managers.forEach((manager) => {
+              if (lookupKey === VEX_ROOT) {
+                manager._jumpToState(topLevelState)
+              }
+              else {
+                manager._jumpToState(mapGlobalStateToNested(lookupKey, globalState))
+              }
+            })
+          })
+        }
+      }
+    })
+  }
+
   return {
     state$,
     getLookupKey,
@@ -353,42 +389,6 @@ export function setUpDevTools(
       const message = { type }
       sendToDevTools(message, globalState)
     })
-
-  devTools.subscribe(({ type, state }) => {
-    if (!!state) {
-      const globalState = JSON.parse(state)
-      if (type === 'DISPATCH') {
-        vex_managers$.pipe(first()).subscribe((managers) => {
-          const topLevelState = managers.reduce((newGlobalState, manager) => {
-            const _newGlobalState = { ...newGlobalState }
-            const lookupKey = manager.getLookupKey()
-            if (lookupKey !== VEX_ROOT) {
-              if (lookupKey.indexOf('.') > 0 && lookupKey.indexOf('.') !== lookupKey.length - 1 ) {
-                delete _newGlobalState[lookupKey]
-              }
-              else {
-                const parentObject = mapGlobalStateToNested(
-                  lookupKey.substring(0, lookupKey.lastIndexOf('.')),
-                  _newGlobalState
-                )
-                delete parentObject[lookupKey.substring(lookupKey.lastIndexOf('.') + 1)]
-              }
-            }
-            return _newGlobalState
-          }, globalState)
-          managers.forEach((manager) => {
-            const lookupKey = manager.getLookupKey()
-            if (lookupKey === VEX_ROOT) {
-              manager._jumpToState(topLevelState)
-            }
-            else {
-              manager._jumpToState(mapGlobalStateToNested(manager.getLookupKey(), globalState))
-            }
-          })
-        })
-      }
-    }
-  })
 }
 
 function mapNestedStateToGlobal(_lookupKey: string | undefined, globalState: any, nestedState: any): any {

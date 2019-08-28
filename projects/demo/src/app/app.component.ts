@@ -9,6 +9,6 @@ import { setUpDevTools } from 'projects/vex/src/public-api'
 })
 export class AppComponent {
   constructor(public ngZone: NgZone) {
-    ngZone.run(() => setUpDevTools())
+    this.ngZone.run(() => setUpDevTools())
   }
 }
