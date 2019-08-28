@@ -49,11 +49,11 @@ Vex is a simple, lightweight, asynchronous state manager for JavaScript user int
 > `type: string` <br>
   (*required*) A string representing the category of the action.
   
-> `reduce(state: StateType): StateType`
+> `reduce(state: StateType): StateType` <br>
   (*required*) The business logic associated with a synchronous Action. Analagous to a
   reducer function in Redux, in that it returns the new state of the manager.
 
-> `resolve(state$: Observable<StateType>): Promise<StateType> | Observable<StateType>`
+> `resolve(state$: Observable<StateType>): Promise<StateType> | Observable<StateType>` <br>
   (*required*) The business logic associated with an asynchronous Action. Returns a
   Promise or Observable of the new state of the manager.
 
@@ -91,23 +91,25 @@ export class AppComponent {
 
 ### DevToolsOptions
 
+*all fields are optional*
+
 > `name: string`
 
 > `maxAge: number`
 
-> `latency?: number`
+> `latency: number`
 
-> `actionsBlacklist?: string[]`
+> `actionsBlacklist: string[]`
 
-> `actionsWhitelist?: string[]`
+> `actionsWhitelist: string[]`
 
-> `shouldCatchErrors?: boolean`
+> `shouldCatchErrors: boolean`
 
-> `logTrace?: boolean`
+> `logTrace: boolean`
 
-> `predicate?: (state: any, action: any) => boolean`
+> `predicate: (state: any, action: any) => boolean`
 
-> `shallow?: boolean`
+> `shallow: boolean`
 
 
 ## Background
@@ -218,7 +220,7 @@ import { AppService } from './app.service'
     imports: [
         BrowserModule,
         HttpClientModule,
-        VexModule.forRoot(initialState)
+        VexModule.forRoot(initialState),
     ],
     declarations: [ AppComponent ],
     providers: [ AppService ],
