@@ -84,14 +84,14 @@ import { setUpDevTools } from '@dannymayer/vex'
 @Component(/* ... */)
 export class AppComponent {
   constructor(private _ngZone: NgZone) {
-    _ngZone.run(() => setUpDevTools())
+    this._ngZone.run(() => setUpDevTools())
   }
 }
 ```
 
 ### DevToolsOptions
 
-*all fields are optional*
+*(all fields are optional)*
 
 > `name: string`
 
@@ -140,16 +140,16 @@ offers. Vex aims to check all of those boxes in one tiny, convenient interface.
 **app.model.ts**
 ```ts
 export interface AppState {
-    todos: string[]
+  todos: string[]
 }
 
 export enum AppAction {
-    CREATE_TODO = 'CREATE_TODO'
-    DELETE_TODO = 'DELETE_TODO'
+  CREATE_TODO = 'CREATE_TODO'
+  DELETE_TODO = 'DELETE_TODO'
 }
 
 export const initialState: AppState = {
-    todos: []
+  todos: []
 }
 ```
 
@@ -164,46 +164,47 @@ import { AppAction, AppState } from './app.model'
 
 @Injectable()
 export class AppService {
-    constructor(
-        private _httpClient: HttpClient,
-        private _manager: Manager<AppState>,
-    ) { }
+  constructor(
+    private _httpClient: HttpClient,
+    private _manager: Manager<AppState>,
+  ) { }
 
-    // This method dispatches an asynchronous action.
-    // `.dispatch()`, which returns `void`, can be used in place of `.once()`.
-    public createTodo(todo: string): Observable<AppState> {
-        return this._manager
-            .once({
-                type: AppAction.CREATE_TODO,
-                resolve: (state$) => this._httpClient.post('/api/todo', { todo }).pipe(
-                    withLatestFrom(state$),
-                    map(([state, { todoMessage }]) => ({
-                        todos: [ ...state.todos, todoMessage ]
-                    })),
-                ),
-            })
-            .pipe(map(({ state }) => state))
-    }
+  // This method dispatches an asynchronous action.
+  // `.dispatch()`, which returns `void`, can be used in place of `.once()`.
+  public createTodo(todo: string): Observable<AppState> {
+    return this._manager
+      .once({
+        type: AppAction.CREATE_TODO,
+        resolve: (state$) => this._httpClient.post('/api/todo', { todo }).pipe(
+          withLatestFrom(state$),
+          map(([state, response]) => ({
+            todos: [ ...state.todos, response ]
+          })),
+        ),
+      })
+      .pipe(map(({ state }) => state))
+  }
 
-    // This method dispatches a synchronous action, and performs its asynchronous logic
-    // outside of Vex.
-    public deleteTodo(todoIndex: number): Observable<AppState> {
-        this._manager.dispatch({
-            type: AppAction.DELETE_TODO,
-            reduce: (state) => ({
-                ...state,
-                todos: [
-                    ...state.todos.slice(0, todoIndex),
-                    ...state.todos.slice(todoIndex + 1),
-                ],
-            }),
-        })
-        return this._httpClient.delete(`/api/todo/${todoIndex}`).pipe(
-            switchMap(() => this._manager.state$),
-            first(),
-        )
-    }
+  // This method dispatches a synchronous action, and performs its asynchronous logic
+  // outside of the manager.
+  public deleteTodo(todoIndex: number): Observable<AppState> {
+    this._manager.dispatch({
+      type: AppAction.DELETE_TODO,
+      reduce: (state) => ({
+        ...state,
+        todos: [
+          ...state.todos.slice(0, todoIndex),
+          ...state.todos.slice(todoIndex + 1),
+        ],
+      }),
+    })
+    return this._httpClient.delete(`/api/todo/${todoIndex}`).pipe(
+      switchMap(() => this._manager.state$),
+      first(),
+    )
+  }
 }
+
 ```
 
 **app.module.ts**
@@ -217,14 +218,14 @@ import { initialState } from './app.model'
 import { AppService } from './app.service'
 
 @NgModule({
-    imports: [
-        BrowserModule,
-        HttpClientModule,
-        VexModule.forRoot(initialState),
-    ],
-    declarations: [ AppComponent ],
-    providers: [ AppService ],
-    bootstrap: [ AppComponent ],
+  imports: [
+    BrowserModule,
+    HttpClientModule,
+    VexModule.forRoot(initialState),
+  ],
+  declarations: [ AppComponent ],
+  providers: [ AppService ],
+  bootstrap: [ AppComponent ],
 })
 export class AppModule { }
 ```

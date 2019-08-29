@@ -7,8 +7,8 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "build": "ng build; cp README.md dist/vex/README.md",
-    "publish": "ng build vex; ng test vex --watch=false && cd dist/vex && npm publish --access public",
+    "build": "ng build && cp README.md dist/vex/README.md",
+    "publish": "npm run build && ng test vex --watch=false && cd dist/vex && npm publish --access public",
     "test": "ng test"
   },
   "private": true,
