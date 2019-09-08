@@ -1,16 +1,21 @@
 import { defer, from, merge, of, zip, BehaviorSubject, Observable, Subject } from 'rxjs'
 import { catchError, concatMap, filter, first, map, mergeScan, scan, share, shareReplay, skip, startWith, switchMap, tap, withLatestFrom } from 'rxjs/operators'
 
-/**
- * `Action` is the unit of work in a vex state manager.
- */
-export interface Action<StateType> {
+interface SyncAction<StateType> {
   type: string
-  reduce?(state: StateType): StateType,
-  resolve?(
+  reduce(state: StateType): StateType
+}
+interface AsyncAction<StateType> {
+  type: string
+  resolve(
     state: Observable<StateType>
   ): Observable<StateType> | Promise<StateType>
 }
+
+/**
+ * `Action` is the unit of work in a vex state manager.
+ */
+export type Action<StateType> = SyncAction<StateType> | AsyncAction<StateType>
 
 export interface ActionResult<StateType> {
   actionType: string
@@ -41,17 +46,18 @@ export interface Manager<StateType> {
   _jumpToState(state: StateType): void
 }
 
+/** @deprecated Use `ManagerOptions` instead. */
 export interface VexManagerOptions {
   allowConcurrency?: boolean
 }
+
+export type ManagerOptions = VexManagerOptions
 
 /**
  * Adapted from https://github.com/datorama/akita/blob/master/akita/src/devTools.ts.
 */
 export interface DevToolsOptions {
-  /** instance name visible in devTools */
   name?: string
-  /**  maximum allowed actions to be stored in the history tree */
   maxAge?: number
   latency?: number
   actionsBlacklist?: string[]
@@ -132,7 +138,7 @@ export function addManager<StateType>(
 export class Manager<StateType> {
   constructor(
     initialState: StateType,
-    options: VexManagerOptions = {
+    options: ManagerOptions = {
       allowConcurrency: true,
     },
     lookupKey = VEX_ROOT
@@ -143,7 +149,7 @@ export class Manager<StateType> {
 
 export function createManager<StateType>(
   initialState: StateType,
-  options: VexManagerOptions = {},
+  options: ManagerOptions = {},
   lookupKey = VEX_ROOT
 ): Manager<StateType> {
   const _dispatchß = new Subject<Action<StateType>>()
@@ -205,13 +211,17 @@ export function createManager<StateType>(
     state: StateType,
     action: Action<StateType>
   ): Observable<ActionResult<StateType>> {
-    if (action.reduce && action.resolve) {
-      throw new Error('[vex] An action may include either a `reduce` or `resolve` function, not both.')
+    const syncAction = action as SyncAction<StateType>
+    const asyncAction = action as AsyncAction<StateType>
+    if (syncAction.reduce && asyncAction.resolve) {
+      throw new Error(
+        '[vex] An action may include either a `reduce` or `resolve` function, not both.'
+      )
     }
-    else if (action.reduce) {
+    else if (syncAction.reduce) {
       // Handle synchronous success or error.
       try {
-        const newState = action.reduce(state)
+        const newState = syncAction.reduce(state)
         return of({
           actionType: action.type,
           state: Object.assign(state, newState),
@@ -224,9 +234,9 @@ export function createManager<StateType>(
         })
       }
     }
-    else if (action.resolve) {
+    else if (asyncAction.resolve) {
       // Handle asynchronous success or error.
-      return from(action.resolve(state$)).pipe(
+      return from(asyncAction.resolve(state$)).pipe(
         first(),
         map(
           (newState) => ({
@@ -330,7 +340,7 @@ export function createManager<StateType>(
 
 export function createManagerForRoot(
   initialState: any,
-  options: VexManagerOptions = {},
+  options: ManagerOptions = {},
 ): Manager<any> {
   const manager = createManager(initialState, options)
   addManager(manager)
@@ -340,7 +350,7 @@ export function createManagerForRoot(
 export function createManagerForFeature(
   lookupKey: string,
   initialState: any,
-  options: VexManagerOptions = {},
+  options: ManagerOptions = {},
 ): Manager<any> {
   const manager = createManager(initialState, options, lookupKey)
   addManager(manager)

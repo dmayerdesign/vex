@@ -4,6 +4,7 @@
 export {
   Manager,
   VexManagerOptions,
+  ManagerOptions,
   createManagerForRoot,
   createManagerForFeature,
   setUpDevTools,

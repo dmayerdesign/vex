@@ -35,9 +35,9 @@ Vex is a simple, lightweight, asynchronous state manager for JavaScript user int
 > *parameter* `initialState: StateType` <br>
   (*required*) Each manager must be initialized with an `initialState`.
 
-> *parameter* `options?: VexManagerOptions` *(optional)*
+> *parameter* `options?: ManagerOptions` *(optional)*
 
-### VexManagerOptions
+### ManagerOptions
 
 > `allowConcurrency: boolean` <br>
   (*optional*) Defaults to `true`; if set to `false`, an Action dispatched before
@@ -72,7 +72,7 @@ Vex is a simple, lightweight, asynchronous state manager for JavaScript user int
 Vex integrates with [Redux DevTools](https://chrome.google.com/webstore/detail/redux-devtools/lmhkpmbekcpmknklioeibfkpmmfibljd?hl=en) to allow you to visualize your app's state over time,
 including the ability to time-travel through your app's history.
 
-To configure DevTools, simply call `setUpDevTools` with an optional `DevtoolsOptions`
+To configure DevTools, simply call `setUpDevTools` with an optional `DevToolsOptions`
 as the only argument.
 
 In Angular, `setUpDevTools` must be invoked inside of an `NgZone#run` callback, like so:
