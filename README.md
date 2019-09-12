@@ -177,7 +177,7 @@ export class AppService {
         type: AppAction.CREATE_TODO,
         resolve: (state$) => this._httpClient.post('/api/todo', { todo }).pipe(
           withLatestFrom(state$),
-          map(([state, response]) => ({
+          map(([response, state]) => ({
             todos: [ ...state.todos, response ]
           })),
         ),
