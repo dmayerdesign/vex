@@ -144,8 +144,8 @@ export interface AppState {
 }
 
 export enum AppAction {
-  CREATE_TODO = 'CREATE_TODO'
-  DELETE_TODO = 'DELETE_TODO'
+  CREATE_TODO = 'CREATE_TODO',
+  DELETE_TODO = 'DELETE_TODO',
 }
 
 export const initialState: AppState = {
@@ -169,8 +169,8 @@ export class AppService {
     private _manager: Manager<AppState>,
   ) { }
 
-  // This method dispatches an asynchronous action.
-  // `.dispatch()`, which returns `void`, can be used in place of `.once()`.
+  // This method dispatches an asynchronous action. Notice that it uses the
+  // `resolve` function.
   public createTodo(todo: string): Observable<AppState> {
     return this._manager
       .once({
@@ -186,7 +186,7 @@ export class AppService {
   }
 
   // This method dispatches a synchronous action, and performs its asynchronous logic
-  // outside of the manager.
+  // outside of the manager. Note that it uses the `reduce` function.
   public deleteTodo(todoIndex: number): Observable<AppState> {
     this._manager.dispatch({
       type: AppAction.DELETE_TODO,
